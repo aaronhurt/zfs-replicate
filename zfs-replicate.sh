@@ -1,12 +1,12 @@
 #!/usr/local/bin/bash
 ## /root/doreplicate.sh
-## last update 07.26.2010 by ahurt
+## last update 02.08.2012 by ahurt
 ##
 
 ## datasets to replicate - use zfs paths not mount points...
-## format is local_pool/local_fs:remote_pool/remote_fs
+## format is local_pool/local_fs:remote_pool
 ## the local snap name will be used on the remote end
-REPLICATE_SETS="pool/mystyle-data:pool"
+REPLICATE_SETS="zstore/testing:zroot"
 
 ## number of snapshots to keep of each dataset
 ## snaps in excess of this number will be expired
@@ -23,8 +23,12 @@ LOGBASE=/root/logs
 
 ## pipe to your remote host...the pool/snap
 ## DO NOT INCLUDE THE PIPE (|) CHARACTER
-## names from this host will be used on the remote
+## fs names from this host will be used on the remote
 REMOTE="ssh nv-srv2 zfs receive -vFd"
+
+## command to check health of remote host
+## a return code of 0 will be considered OK
+RCHECK="ping -c1 -q -W2 nv-srv2"
 
 ## path to zfs binary
 ZFS=/sbin/zfs
@@ -134,6 +138,16 @@ clear_lock() {
         fi
 }
 
+## check remote system health
+check_remote() {
+	## if check command returns non 0 ... then stop
+	$RCHECK > /dev/null 2>&1
+	if [ $? != 0 ]; then
+		echo "ERROR: Remote health check '$RCHECK' failed!"
+		exit_clean
+	fi
+}
+
 ## main replication function
 do_send(){
         ## check our send lockfile
@@ -229,6 +243,9 @@ init(){
                 echo "Please check the setting of 'SNAP_KEEP' in the script."
                 exit_clean
         fi
+	## check remote health
+	echo "Checking remote system..."
+	check_remote
         ## do snapshots and send
         echo "Creating snapshots..."
         do_snap
