@@ -1,6 +1,6 @@
-#!/usr/local/bin/bash
-## /root/doreplicate.sh
-## last update 02.08.2012 by ahurt
+#!/usr/bin/env bash
+## zfs-replicate.sh
+## last update 05.22.2013 by ahurt
 ##
 
 ## datasets to replicate - use zfs paths not mount points...
