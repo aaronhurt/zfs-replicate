@@ -6,7 +6,7 @@
 ## datasets to replicate - use zfs paths not mount points...
 ## format is local_pool/local_fs:remote_pool
 ## the local snap name will be used on the remote end
-REPLICATE_SETS="zstore/testing:zroot"
+REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
 
 ## number of snapshots to keep of each dataset
 ## snaps in excess of this number will be expired
@@ -24,11 +24,11 @@ LOGBASE=/root/logs
 ## pipe to your remote host...the pool/snap
 ## DO NOT INCLUDE THE PIPE (|) CHARACTER
 ## fs names from this host will be used on the remote
-REMOTE="ssh nv-srv2 zfs receive -vFd"
+REMOTE="ssh remote-server zfs receive -vFd"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
-RCHECK="ping -c1 -q -W2 nv-srv2"
+RCHECK="ping -c1 -q -W2 remote-server"
 
 ## path to zfs binary
 ZFS=/sbin/zfs
@@ -58,11 +58,11 @@ LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
 ## check log count and delete old
 check_old_log() {
         ## declare log array
-        declare -a logs
+        declare -a logs=()
         ## initialize index
         local index=0
         ## find existing logs
-        for log in `find ${LOGBASE} -maxdepth 1 -type f -name autorep-\*`; do
+        for log in $(find ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
                 ## append logs to array with creation time
                 logs[$index]="$(stat -f %c ${log})\t$log\n"
                 ## increase index
@@ -73,9 +73,9 @@ check_old_log() {
         ## check count ... if greater than keep loop and delete
         if [ $lcount -gt ${LOG_KEEP} ]; then
                 ## build new array in descending age order and reset index
-                declare -a slogs; local index=0
+                declare -a slogs=(); local index=0
                 ## loop through existing array
-                for log in `echo -e ${logs[@]:0} | sort -rn | cut -f2`; do
+                for log in $(echo -e ${logs[@]:0} | sort -rn | cut -f2); do
                         ## append log to array
                         slogs[$index]=${log}
                         ## increase index
@@ -105,9 +105,9 @@ check_lock () {
         ## check our lockfile status
         if [ -f "${1}" ]; then
                 ## get lockfile contents
-                local lpid=`cat "${1}"`
+                local lpid=$(cat "${1}")
                 ## see if this pid is still running
-                local ps=`ps auxww|grep $lpid|grep -v grep`
+                local ps=$(ps auxww|grep $lpid|grep -v grep)
                 if [ "${ps}x" != 'x' ]; then
                         ## looks like it's still running
                         echo "ERROR: This script is already running as: $ps"
@@ -140,16 +140,16 @@ clear_lock() {
 
 ## check remote system health
 check_remote() {
-	## if check command returns non 0 ... then stop
-	$RCHECK > /dev/null 2>&1
-	if [ $? != 0 ]; then
-		echo "ERROR: Remote health check '$RCHECK' failed!"
-		exit_clean
-	fi
+    ## if check command returns non 0 ... then stop
+    $RCHECK > /dev/null 2>&1
+    if [ $? != 0 ]; then
+        echo "ERROR: Remote health check '$RCHECK' failed!"
+        exit_clean
+    fi
 }
 
 ## main replication function
-do_send(){
+do_send() {
         ## check our send lockfile
         check_lock "${LOGBASE}/.send.lock"
         ## create initial send command based on arguments
@@ -166,7 +166,7 @@ do_send(){
 }
 
 ## create and manage our zfs snapshots
-do_snap(){
+do_snap() {
         ## make sure we aren't ever creating simultaneous snapshots
         check_lock "${LOGBASE}/.snapshot.lock"
         ## set our snap name
@@ -174,16 +174,16 @@ do_snap(){
         ## generate snapshot list and cleanup old snapshots
         for foo in $REPLICATE_SETS; do
                 ## split dataset into local and remote parts
-                local_set=`echo $foo|cut -f1 -d:`
-                remote_set=`echo $foo|cut -f2 -d:`
+                local_set=$(echo $foo|cut -f1 -d:)
+                remote_set=$(echo $foo|cut -f2 -d:)
                 ## get current existing snapshots that look like
                 ## they were made by this script
-                local temps=`$ZFS list -t snapshot|\
-                grep "${local_set}\@autorep-" | awk '{print $1}'`
+                local temps=$($ZFS list -t snapshot|\
+                    grep "${local_set}\@autorep-" | awk '{print $1}')
                 ## just a counter var
                 local index=0
                 ## our snapshot array
-                declare -a snaps
+                declare -a snaps=()
                 ## to the loop...
                 for sn in $temps; do
                         ## while we are here...check for our current snap name
@@ -202,7 +202,9 @@ do_snap(){
                 ## set our snap count and reset our index
                 local scount=${#snaps[@]}; local index=0
                 ## set our base snap for incremental generation below
-                local base_snap=${snaps[$scount-1]}
+                if [ $scount -ge 1 ]; then
+                    local base_snap=${snaps[$scount-1]}
+                fi
                 ## how many snapshots did we end up with..
                 if [ $scount -ge $SNAP_KEEP ]; then
                         ## oops...too many snapshots laying around
@@ -236,23 +238,23 @@ do_snap(){
 }
 
 ## it all starts here...
-init(){
-        ## sanity check
-        if [ $SNAP_KEEP -lt 2 ]; then
-                echo "ERROR: You must keep at least 2 snaps for incremental sending."
-                echo "Please check the setting of 'SNAP_KEEP' in the script."
-                exit_clean
-        fi
-	## check remote health
-	echo "Checking remote system..."
-	check_remote
-        ## do snapshots and send
-        echo "Creating snapshots..."
-        do_snap
-        ## that's it...sending called from do_snap
-        echo "Finished all operations for ..."
-        ## show a nice message and exit...
+init() {
+    ## sanity check
+    if [ $SNAP_KEEP -lt 2 ]; then
+        echo "ERROR: You must keep at least 2 snaps for incremental sending."
+        echo "Please check the setting of 'SNAP_KEEP' in the script."
         exit_clean
+    fi
+    ## check remote health
+    echo "Checking remote system..."
+    check_remote
+    ## do snapshots and send
+    echo "Creating snapshots..."
+    do_snap
+    ## that's it...sending called from do_snap
+    echo "Finished all operations for ..."
+    ## show a nice message and exit...
+    exit_clean
 }
 
 ## make sure our log dir exits
