@@ -34,7 +34,7 @@ RCHECK="ping -c1 -q -W2 remote-server"
 ZFS=/sbin/zfs
 
 ## get the current date info
-DOW=$(date +"%a")
+DOW=$(date "+%a")
 MOY=$(date "+%m")
 DOM=$(date "+%d")
 NOW=$(date "+%s")
