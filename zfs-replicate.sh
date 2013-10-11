@@ -63,8 +63,19 @@ check_old_log() {
         local index=0
         ## find existing logs
         for log in $(find ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
+                ## get file change time via stat (platform specific)
+                case "$(uname -s)" in
+                    Linux)
+                        ## gnu stat is different than everything else
+                        local fstat=$(stat -c %Z ${log})
+                    ;;
+                    *)
+                        ## this should cover most other platforms
+                        local fstat=$(stat -f %c ${log})
+                    ;;
+                esac
                 ## append logs to array with creation time
-                logs[$index]="$(stat -f %c ${log})\t$log\n"
+                logs[$index]="${fstat}\t${log}\n"
                 ## increase index
                 let "index += 1"
         done
