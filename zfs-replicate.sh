@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ## zfs-replicate.sh
-## last update 05.22.2013 by ahurt
+## file revision $Id$
 ##
 
 ## datasets to replicate - use zfs paths not mount points...
