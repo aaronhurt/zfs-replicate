@@ -8,14 +8,20 @@
 ## the local snap name will be used on the remote end
 REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
 
+## option to recurrsively snapshot children of
+## all datasets listed above
+## 0 - disable (previous behavior)
+## 1 - enable
+RECURSE_CHILDREN=0
+
 ## number of snapshots to keep of each dataset
 ## snaps in excess of this number will be expired
 ## oldest deleted first...must be 2 or greater
-SNAP_KEEP="2"
+SNAP_KEEP=2
 
 ## number of logs to keep in path ... logs will be
 ## deleted in order of age with oldest going first
-LOG_KEEP="10"
+LOG_KEEP=10
 
 ## where you want your log files
 ## and gnu tar incremental snaphots
@@ -231,7 +237,13 @@ do_snap() {
                 fi
                 ## come on already...make that snapshot
                 echo "Creating ZFS snapshot ${local_set}@${sname}"
-                $ZFS snapshot ${local_set}@${sname}
+                ## check if we are supposed to be recurrsive
+                if [ $RECURSE_CHILDREN -ne 1 ]
+                    $ZFS snapshot ${local_set}@${sname}
+                else
+                    $ZFS snapshot -r ${local_set}@${sname}
+                fi
+                ## check return
                 if [ $? -ne 0 ]; then
                         ## oops...that's not right
                         exit_clean $?
