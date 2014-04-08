@@ -3,6 +3,9 @@
 ## file revision $Id$
 ##
 
+## IP address or hostname of the remote server
+REMOTE_SERVER='192.168.100.2'
+
 ## datasets to replicate - use zfs paths not mount points...
 ## format is local_pool/local_fs:remote_pool
 ## the local snap name will be used on the remote end
@@ -30,11 +33,11 @@ LOGBASE=/root/logs
 ## pipe to your remote host...the pool/snap
 ## DO NOT INCLUDE THE PIPE (|) CHARACTER
 ## fs names from this host will be used on the remote
-REMOTE="ssh remote-server zfs receive -vFd"
+REMOTE="ssh ${REMOTE_SERVER} zfs receive -vFd"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
-RCHECK="ping -c1 -q -W2 remote-server"
+RCHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 
 ## path to zfs binary
 ZFS=/sbin/zfs
@@ -238,7 +241,7 @@ do_snap() {
                 ## come on already...make that snapshot
                 echo "Creating ZFS snapshot ${local_set}@${sname}"
                 ## check if we are supposed to be recurrsive
-                if [ $RECURSE_CHILDREN -ne 1 ]
+                if [ $RECURSE_CHILDREN -ne 1 ]; then
                     $ZFS snapshot ${local_set}@${sname}
                 else
                     $ZFS snapshot -r ${local_set}@${sname}
