@@ -238,7 +238,7 @@ do_snap() {
                 ## come on already...make that snapshot
                 echo "Creating ZFS snapshot ${local_set}@${sname}"
                 ## check if we are supposed to be recurrsive
-                if [ $RECURSE_CHILDREN -ne 1 ]
+                if [ $RECURSE_CHILDREN -ne 1 ]; then
                     $ZFS snapshot ${local_set}@${sname}
                 else
                     $ZFS snapshot -r ${local_set}@${sname}
