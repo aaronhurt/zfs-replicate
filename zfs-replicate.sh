@@ -3,9 +3,6 @@
 ## file revision $Id$
 ##
 
-## IP address or hostname of the remote server
-REMOTE_SERVER='192.168.100.2'
-
 ## datasets to replicate - use zfs paths not mount points...
 ## format is local_pool/local_fs:remote_pool
 ## the local snap name will be used on the remote end
@@ -30,14 +27,28 @@ LOG_KEEP=10
 ## and gnu tar incremental snaphots
 LOGBASE=/root/logs
 
-## pipe to your remote host...the pool/snap
-## DO NOT INCLUDE THE PIPE (|) CHARACTER
-## fs names from this host will be used on the remote
-REMOTE="ssh ${REMOTE_SERVER} zfs receive -vFd"
+## ip address or hostname of a remote server
+## this variable may be referenced in the
+## additional settings below
+##
+## this should not be used for local replication
+## and could be commented out and ignored
+REMOTE_SERVER='192.168.100.2'
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
-RCHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
+##
+## this is not used for local replication
+## and could be commented out and ignored
+REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
+
+## pipe to your remote host...the pool/snap
+## DO NOT INCLUDE THE PIPE (|) CHARACTER
+## fs names from this host will be used on the remote
+##
+## for local replication do not
+## call ssh or reference a remote server
+RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
 
 ## path to zfs binary
 ZFS=/sbin/zfs
@@ -160,11 +171,15 @@ clear_lock() {
 
 ## check remote system health
 check_remote() {
-    ## if check command returns non 0 ... then stop
-    $RCHECK > /dev/null 2>&1
-    if [ $? != 0 ]; then
-        echo "ERROR: Remote health check '$RCHECK' failed!"
-        exit_clean
+    ## do we have a remote check defined
+    if [ "${REMOTE_CHECK}x" != 'x' ]; then
+        ## run the check
+        $REMOTE_CHECK > /dev/null 2>&1
+        ## exit if above returned non-zero
+        if [ $? != 0 ]; then
+            echo "ERROR: Remote health check '$REMOTE_CHECK' failed!"
+            exit_clean
+        fi
     fi
 }
 
@@ -179,8 +194,8 @@ do_send() {
         else
                 sendargs="-R -I ${1}"
         fi
-        echo "RUNNING: ${ZFS} send $sendargs ${2} | ${REMOTE} ${3}"
-        ${ZFS} send $sendargs ${2} | ${REMOTE} ${3}
+        echo "RUNNING: ${ZFS} send $sendargs ${2} | ${RECEIVE_PIPE} ${3}"
+        ${ZFS} send $sendargs ${2} | ${RECEIVE_PIPE} ${3}
         ## clear lockfile
         clear_lock "${LOGBASE}/.send.lock"
 }
