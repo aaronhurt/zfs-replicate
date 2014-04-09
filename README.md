@@ -36,14 +36,28 @@ LOG_KEEP=10
 ## and gnu tar incremental snaphots
 LOGBASE=/root/logs
 
-## pipe to your remote host...the pool/snap
-## DO NOT INCLUDE THE PIPE (|) CHARACTER
-## fs names from this host will be used on the remote
-REMOTE="ssh remote-server zfs receive -vFd"
+## ip address or hostname of a remote server
+## this variable may be referenced in the
+## additional settings below
+##
+## this should not be used for local replication
+## and could be commented out and ignored
+REMOTE_SERVER='192.168.100.2'
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
-RCHECK="ping -c1 -q -W2 remote-server"
+##
+## this is not used for local replication
+## and could be commented out and ignored
+REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
+
+## pipe to your remote host...the pool/snap
+## DO NOT INCLUDE THE PIPE (|) CHARACTER
+## fs names from this host will be used on the remote
+##
+## for local replication do not
+## call ssh or reference a remote server
+RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
 
 ## path to zfs binary
 ZFS=/sbin/zfs
