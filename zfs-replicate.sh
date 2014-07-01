@@ -215,8 +215,13 @@ do_snap() {
                 remote_set=$(echo $foo|cut -f2 -d:)
                 ## get current existing snapshots that look like
                 ## they were made by this script
-                local temps=$($ZFS list -Hr -o name -S creation -t snapshot -d 1 ${local_set}|\
-                    grep "${local_set}\@autorep-" | awk '{print $1}')
+                if [ $RECURSE_CHILDREN -ne 1 ]; then
+                    local temps=$($ZFS list -Hr -o name -S creation -t snapshot -d 1 ${local_set}|\
+                        grep "${local_set}\@autorep-" | awk '{print $1}')
+                else
+                    local temps=$($ZFS list -Hr -o name -S creation -t snapshot ${local_set}|\
+                        grep "${local_set}\@autorep-" | awk '{print $1}')
+                fi
                 ## just a counter var
                 local index=0
                 ## our snapshot array
