@@ -46,6 +46,10 @@ REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 ## DO NOT INCLUDE THE PIPE (|) CHARACTER
 ## fs names from this host will be used on the remote
 ##
+## for increased transfer speed you may want to specifically
+## enumerate your prefered cipher order in your ssh command:
+## ssh -c arcfour256,arcfour128,blowfish-cbc,aes128-ctr,aes192-ctr,aes256-ctr
+##
 ## for local replication do not
 ## call ssh or reference a remote server
 RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
@@ -85,12 +89,10 @@ check_old_log() {
         for log in $(find ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
                 ## get file change time via stat (platform specific)
                 case "$(uname -s)" in
-                    Linux)
-                        ## gnu stat is different than everything else
+                    Linux|SunOS)
                         local fstat=$(stat -c %Z ${log})
                     ;;
                     *)
-                        ## this should cover most other platforms
                         local fstat=$(stat -f %c ${log})
                     ;;
                 esac
@@ -213,7 +215,7 @@ do_snap() {
                 remote_set=$(echo $foo|cut -f2 -d:)
                 ## get current existing snapshots that look like
                 ## they were made by this script
-                local temps=$($ZFS list -t snapshot|\
+                local temps=$($ZFS list -Hr -o name -S creation -t snapshot -d 1 ${local_set}|\
                     grep "${local_set}\@autorep-" | awk '{print $1}')
                 ## just a counter var
                 local index=0
