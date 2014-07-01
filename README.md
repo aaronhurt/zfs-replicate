@@ -4,12 +4,21 @@ zfs-replicate.sh
 
 Simple script to replicate zfs volumes between hosts (or between pools on the same host) via incremental snapshots.
 
+Warning
+_______
+
+Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create
+a true 1:1 copy of the source (local) dataset in the destination (remote) dataset as currently configured.
+
+This configuration (```REPLICATE_SETS="zpoolone:zpooltwo"```) will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone```
+and may result in dataloss on ```zpooltwo```.
+
 To Use
 ------
 
 Configuration is done via the first part of the script and is fairly well descibed.
 
-Snippet of that section below.
+Snippet of that section can be found below.
 
 ```bash
 ## datasets to replicate - use zfs paths not mount points...
@@ -54,6 +63,10 @@ REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 ## pipe to your remote host...the pool/snap
 ## DO NOT INCLUDE THE PIPE (|) CHARACTER
 ## fs names from this host will be used on the remote
+##
+## for increased transfer speed you may want to specifically
+## enumerate your prefered cipher order in your ssh command:
+## ssh -c arcfour256,arcfour128,blowfish-cbc,aes128-ctr,aes192-ctr,aes256-ctr
 ##
 ## for local replication do not
 ## call ssh or reference a remote server
