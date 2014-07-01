@@ -5,7 +5,7 @@ zfs-replicate.sh
 Simple script to replicate zfs volumes between hosts (or between pools on the same host) via incremental snapshots.
 
 Warning
-_______
+-------
 
 Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create
 a true 1:1 copy of the source (local) dataset in the destination (remote) dataset as currently configured.
