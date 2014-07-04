@@ -216,11 +216,11 @@ do_snap() {
                 ## get current existing snapshots that look like
                 ## they were made by this script
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
-                    local temps=$($ZFS list -Hr -o name -S creation -t snapshot -d 1 ${local_set}|\
-                        grep "${local_set}\@autorep-" | awk '{print $1}')
+                    local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
+                        grep "${local_set}\@autorep-")
                 else
-                    local temps=$($ZFS list -Hr -o name -S creation -t snapshot ${local_set}|\
-                        grep "${local_set}\@autorep-" | awk '{print $1}')
+                    local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
+                        grep "${local_set}\@autorep-")
                 fi
                 ## just a counter var
                 local index=0
@@ -252,8 +252,8 @@ do_snap() {
                         ## oops...too many snapshots laying around
                         ## we need to destroy some of these
                         while [ $scount -ge $SNAP_KEEP ]; do
-                                ## zfs list always shows newest last
-                                ## we can use that to our advantage
+                                ## snaps are sorted above by creation in
+                                ## ascending order
                                 echo "Destroying OLD snapshot ${snaps[$index]}"
                                 $ZFS destroy ${snaps[$index]}
                                 ## decrease scount and increase index
