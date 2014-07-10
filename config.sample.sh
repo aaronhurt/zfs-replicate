@@ -1,33 +1,13 @@
+## zfs-replicate config.sample.sh
+## sample configuration file - edit as needed
+##
+## file revision $Id$
+##
 
-zfs-replicate.sh
-================
-
-Simple script to replicate zfs volumes between hosts (or between pools on the same host) via incremental snapshots.
-
-Warning
--------
-
-Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create
-a true 1:1 copy of the source (local) dataset in the destination (remote) dataset as currently configured.
-
-The configuration ```REPLICATE_SETS="zpoolone:zpooltwo"``` will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone```
-and may result in dataloss on ```zpooltwo```.
-
-To replicate a root dataset safely to another pool consider this configuration: ```REPLICATE_SETS="zpoolone:zpooltwo/zpoolone"```
-
-This will result in a 1:1 copy of ```zpoolone``` in a separate data set of ```zpooltwo``` and will not affect other datasets currently present on the destination.
-
-To Use
-------
-
-Configuration is done via a separate file that should be passed to the script on execution.  The script will attempt to locate a file called ```config.sh``` if one is not passed via the command line.
-
-The file is very well commented and the contents of the sample config are shown below.
-
-```bash
 ## datasets to replicate - use zfs paths not mount points...
-## format is local_pool/local_fs:remote_pool
-## the local snap name will be used on the remote end
+## format is local_pool/local_fs:remote_pool or
+## local_pool/local_fs:remote_pool/remote_fs the local name
+## will be used on the remote end if not specified
 REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
 
 ## allow replication of root datasets - if you specify root
@@ -35,7 +15,7 @@ REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
 ## script will generate a warning and skip replicating
 ## root datasets
 ## 0 - disable (default)
-## 1 - enable (do so at your own risk)
+## 1 - enable (use at your own risk)
 ALLOW_ROOT_DATASETS=0
 
 ## option to recurrsively snapshot children of
@@ -102,11 +82,3 @@ NAMETAG="${MOY}${DOM}${CYR}_${NOW}"
 ## autorep- in order for log cleanup to work
 ## using the default below is strongly suggested
 LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
-```
-
-Notes
------
-
-This script has been used by myself and others for well over a year, however as they say YMMV (your mileage may vary).
-
-If you use it, let me know, also please report issues via GitHub so this may be improved.

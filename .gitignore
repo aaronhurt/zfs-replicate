@@ -1,0 +1,5 @@
+.DS_*
+.Apple*
+.vimrc
+.*~
+config.sh
