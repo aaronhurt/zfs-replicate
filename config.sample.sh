@@ -1,6 +1,5 @@
-## zfs-replicate config.sample.sh
-## sample configuration file - edit as needed
-##
+## zfs-replicate sample configuration file - edit as needed
+## config.sample.sh
 ## file revision $Id$
 ##
 
