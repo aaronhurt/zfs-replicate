@@ -4,9 +4,18 @@
 ##
 
 ## datasets to replicate - use zfs paths not mount points...
-## format is local_pool/local_fs:remote_pool
-## the local snap name will be used on the remote end
+## format is local_pool/local_fs:remote_pool or
+## local_pool/local_fs:remote_pool/remote_fs the local name
+## will be used on the remote end if not specified
 REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
+
+## allow replication of root datasets - if you specify root
+## datasets above and do not toggle this setting the
+## script will generate a warning and skip replicating
+## root datasets
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+ALLOW_ROOT_DATASETS=0
 
 ## option to recurrsively snapshot children of
 ## all datasets listed above
@@ -115,7 +124,7 @@ check_old_log() {
                         let "index += 1"
                 done
                 ## delete excess logs
-                echo "deleting old logs: ${slogs[@]:${LOG_KEEP}} ..."
+                printf "deleting old logs: %s ...\n" ${slogs[@]:${LOG_KEEP}}
                 rm -rf ${slogs[@]:${LOG_KEEP}}
         fi
 }
@@ -124,12 +133,12 @@ check_old_log() {
 exit_clean() {
         ## print errors
         if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
-                echo "Last operation returned error code: ${1}"
+                printf "Last operation returned error code: %s\n" ${1}
         fi
         ## check log files
         check_old_log
         ## always exit 0
-        echo "Exiting..."
+        printf "Exiting...\n"
         exit 0
 }
 
@@ -143,21 +152,20 @@ check_lock () {
                 local ps=$(ps auxww|grep $lpid|grep -v grep)
                 if [ "${ps}x" != 'x' ]; then
                         ## looks like it's still running
-                        echo "ERROR: This script is already running as: $ps"
+                        printf "ERROR: This script is already running as: %s\n" ${ps}
                 else
                         ## well the lockfile is there...stale?
-                        echo "ERROR: Lockfile exists: '${1}'"
-                        echo -n "However, the contents do not match any "
-                        echo "currently running process...stale lock?"
+                        printf "ERROR: Lockfile exists: %s\n" ${1}
+                        printf "However, the contents do not match any "
+                        printf "currently running process...stale lockfile?\n"
                 fi
                 ## tell em what to do...
-                echo -n "To run script please delete: "
-                echo "'${1}'"
+                printf "To run script please delete: %s\n" ${1}
                 ## compress log and exit...
                 exit_clean
         else
                 ## well no lockfile..let's make a new one
-                echo "Creating lockfile: ${1}"
+                printf "Creating lockfile: %s\n" ${1}
                 echo $$ > "${1}"
         fi
 }
@@ -166,7 +174,7 @@ check_lock () {
 clear_lock() {
         ## delete lockfiles...and that's all we do here
         if [ -f "${1}" ]; then
-                echo "Deleting lockfile: ${1}"
+                printf "Deleting lockfile: %s\n" ${1}
                 rm "${1}"
         fi
 }
@@ -179,7 +187,7 @@ check_remote() {
         $REMOTE_CHECK > /dev/null 2>&1
         ## exit if above returned non-zero
         if [ $? != 0 ]; then
-            echo "ERROR: Remote health check '$REMOTE_CHECK' failed!"
+            printf "ERROR: Remote health check '%s' failed!\n" ${REMOTE_CHECK}
             exit_clean
         fi
     fi
@@ -196,7 +204,7 @@ do_send() {
         else
                 sendargs="-R -I ${1}"
         fi
-        echo "RUNNING: ${ZFS} send $sendargs ${2} | ${RECEIVE_PIPE} ${3}"
+        printf "RUNNING: %s send %s %s | %s %s\n" ${ZFS} $sendargs ${2} ${RECEIVE_PIPE} ${3}
         ${ZFS} send $sendargs ${2} | ${RECEIVE_PIPE} ${3}
         ## clear lockfile
         clear_lock "${LOGBASE}/.send.lock"
@@ -210,9 +218,20 @@ do_snap() {
         local sname="autorep-${NAMETAG}"
         ## generate snapshot list and cleanup old snapshots
         for foo in $REPLICATE_SETS; do
-                ## split dataset into local and remote parts
-                local_set=$(echo $foo|cut -f1 -d:)
-                remote_set=$(echo $foo|cut -f2 -d:)
+                ## split dataset into local and remote parts and trim trailing slashes
+                local local_set=$(echo $foo|cut -f1 -d:|sed 's/\/*$//')
+                local remote_set=$(echo $foo|cut -f2 -d:|sed 's/\/*$//')
+                ## check for root datasets
+                if [ $ALLOW_ROOT_DATASETS -ne 1 ]; then
+                    if [ "${local_set}" == $(basename "${local_set}") ] && \
+                        [ "${remote_set}" == $(basename "${remote_set}") ]; then
+                        printf "WARNING: Replicating root datasets can lead to data loss.\n"
+                        printf "To allow root dataset replication and disable this warning "
+                        printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" ${foo}
+                        ## skip this set
+                        continue
+                    fi
+                fi
                 ## get current existing snapshots that look like
                 ## they were made by this script
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
@@ -232,8 +251,8 @@ do_snap() {
                         if [ "${sn}" == "${local_set}@${sname}" ]; then
                                 ## looks like it's here...we better kill it
                                 ## this shouldn't happen normally
-                                echo "Destroying DUPLICATE snapshot ${local_set}@${sname}"
-                                        $ZFS destroy ${local_set}@${sname}
+                                printf "Destroying DUPLICATE snapshot %s@%s\n" ${local_set} ${sname}
+                                $ZFS destroy ${local_set}@${sname}
                         else
                                 ## append this snap to an array
                                 snaps[$index]=$sn
@@ -254,14 +273,14 @@ do_snap() {
                         while [ $scount -ge $SNAP_KEEP ]; do
                                 ## snaps are sorted above by creation in
                                 ## ascending order
-                                echo "Destroying OLD snapshot ${snaps[$index]}"
+                                printf "Destroying OLD snapshot %s\n" ${snaps[$index]}
                                 $ZFS destroy ${snaps[$index]}
                                 ## decrease scount and increase index
                                 let "scount -= 1"; let "index += 1"
                         done
                 fi
                 ## come on already...make that snapshot
-                echo "Creating ZFS snapshot ${local_set}@${sname}"
+                printf "Creating ZFS snapshot %s@%s\n" ${local_set} ${sname}
                 ## check if we are supposed to be recurrsive
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
                     $ZFS snapshot ${local_set}@${sname}
@@ -289,18 +308,18 @@ do_snap() {
 init() {
     ## sanity check
     if [ $SNAP_KEEP -lt 2 ]; then
-        echo "ERROR: You must keep at least 2 snaps for incremental sending."
-        echo "Please check the setting of 'SNAP_KEEP' in the script."
+        printf "ERROR: You must keep at least 2 snaps for incremental sending.\n"
+        printf "Please check the setting of 'SNAP_KEEP' in the script.\n"
         exit_clean
     fi
     ## check remote health
-    echo "Checking remote system..."
+    printf "Checking remote system...\n"
     check_remote
     ## do snapshots and send
-    echo "Creating snapshots..."
+    printf "Creating snapshots...\n"
     do_snap
     ## that's it...sending called from do_snap
-    echo "Finished all operations for ..."
+    printf "Finished all operations for ...\n"
     ## show a nice message and exit...
     exit_clean
 }

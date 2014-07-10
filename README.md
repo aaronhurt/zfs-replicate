@@ -10,8 +10,12 @@ Warning
 Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create
 a true 1:1 copy of the source (local) dataset in the destination (remote) dataset as currently configured.
 
-This configuration (```REPLICATE_SETS="zpoolone:zpooltwo"```) will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone```
+The configuration ```REPLICATE_SETS="zpoolone:zpooltwo"``` will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone```
 and may result in dataloss on ```zpooltwo```.
+
+To replicate a root dataset safely to another pool consider this configuration: ```REPLICATE_SETS="zpoolone:zpooltwo/zpoolone"```
+
+This will result in a 1:1 copy of ```zpoolone``` in a separate data set of ```zpooltwo``` and will not affect other datasets currently present on the destination.
 
 To Use
 ------
@@ -25,6 +29,14 @@ Snippet of that section can be found below.
 ## format is local_pool/local_fs:remote_pool
 ## the local snap name will be used on the remote end
 REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
+
+## allow replication of root datasets - if you specify root
+## datasets above and do not toggle this setting the
+## script will generate a warning and skip replicating
+## root datasets
+## 0 - disable (default)
+## 1 - enable (do so at your own risk)
+ALLOW_ROOT_DATASETS=0
 
 ## option to recurrsively snapshot children of
 ## all datasets listed above
