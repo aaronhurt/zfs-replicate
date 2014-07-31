@@ -32,8 +32,7 @@ SNAP_KEEP=2
 ## deleted in order of age with oldest going first
 LOG_KEEP=10
 
-## where you want your log files
-## and gnu tar incremental snaphots
+## where to place log files and temporary lock files
 LOGBASE=/root/logs
 
 ## ip address or hostname of a remote server
@@ -42,7 +41,7 @@ LOGBASE=/root/logs
 ##
 ## this should not be used for local replication
 ## and could be commented out and ignored
-REMOTE_SERVER='192.168.100.2'
+REMOTE_SERVER="192.168.100.2"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK

@@ -43,7 +43,7 @@ check_old_log() {
                         let "index += 1"
                 done
                 ## delete excess logs
-                printf "deleting old logs: %s ...\n" ${slogs[@]:${LOG_KEEP}}
+                printf "deleting old logs: %s ...\n" "${slogs[@]:${LOG_KEEP}}"
                 rm -rf ${slogs[@]:${LOG_KEEP}}
         fi
 }
@@ -52,7 +52,7 @@ check_old_log() {
 exit_clean() {
         ## print errors
         if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
-                printf "Last operation returned error code: %s\n" ${1}
+                printf "Last operation returned error code: %s\n" "${1}"
         fi
         ## check log files
         check_old_log
@@ -71,20 +71,20 @@ check_lock () {
                 local ps=$(ps auxww|grep $lpid|grep -v grep)
                 if [ "${ps}x" != 'x' ]; then
                         ## looks like it's still running
-                        printf "ERROR: This script is already running as: %s\n" ${ps}
+                        printf "ERROR: This script is already running as: %s\n" "${ps}"
                 else
                         ## well the lockfile is there...stale?
-                        printf "ERROR: Lockfile exists: %s\n" ${1}
+                        printf "ERROR: Lockfile exists: %s\n" "${1}"
                         printf "However, the contents do not match any "
                         printf "currently running process...stale lockfile?\n"
                 fi
                 ## tell em what to do...
-                printf "To run script please delete: %s\n" ${1}
+                printf "To run script please delete: %s\n" "${1}"
                 ## compress log and exit...
                 exit_clean
         else
                 ## well no lockfile..let's make a new one
-                printf "Creating lockfile: %s\n" ${1}
+                printf "Creating lockfile: %s\n" "${1}"
                 echo $$ > "${1}"
         fi
 }
@@ -93,7 +93,7 @@ check_lock () {
 clear_lock() {
         ## delete lockfiles...and that's all we do here
         if [ -f "${1}" ]; then
-                printf "Deleting lockfile: %s\n" ${1}
+                printf "Deleting lockfile: %s\n" "${1}"
                 rm "${1}"
         fi
 }
@@ -106,7 +106,7 @@ check_remote() {
         $REMOTE_CHECK > /dev/null 2>&1
         ## exit if above returned non-zero
         if [ $? != 0 ]; then
-            printf "ERROR: Remote health check '%s' failed!\n" ${REMOTE_CHECK}
+            printf "ERROR: Remote health check '%s' failed!\n" "${REMOTE_CHECK}"
             exit_clean
         fi
     fi
@@ -119,12 +119,13 @@ do_send() {
         ## create initial send command based on arguments
         ## if first snapname is NULL we do not generate an inremental
         if [ "${1}" == "NULL" ]; then
-                sendargs="-R"
+                local sendargs="-R"
         else
-                sendargs="-R -I ${1}"
+                local sendargs="-R -I ${1}"
         fi
-        printf "RUNNING: %s send %s %s | %s %s\n" ${ZFS} $sendargs ${2} ${RECEIVE_PIPE} ${3}
-        ${ZFS} send $sendargs ${2} | ${RECEIVE_PIPE} ${3}
+        printf "Sending snapshots...\n"
+        printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
+        ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
         ## clear lockfile
         clear_lock "${LOGBASE}/.send.lock"
 }
@@ -146,7 +147,7 @@ do_snap() {
                         [ "${remote_set}" == $(basename "${remote_set}") ]; then
                         printf "WARNING: Replicating root datasets can lead to data loss.\n"
                         printf "To allow root dataset replication and disable this warning "
-                        printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" ${foo}
+                        printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" "${foo}"
                         ## skip this set
                         continue
                     fi
@@ -170,7 +171,7 @@ do_snap() {
                         if [ "${sn}" == "${local_set}@${sname}" ]; then
                                 ## looks like it's here...we better kill it
                                 ## this shouldn't happen normally
-                                printf "Destroying DUPLICATE snapshot %s@%s\n" ${local_set} ${sname}
+                                printf "Destroying DUPLICATE snapshot %s@%s\n" "${local_set}" "${sname}"
                                 $ZFS destroy ${local_set}@${sname}
                         else
                                 ## append this snap to an array
@@ -192,14 +193,14 @@ do_snap() {
                         while [ $scount -ge $SNAP_KEEP ]; do
                                 ## snaps are sorted above by creation in
                                 ## ascending order
-                                printf "Destroying OLD snapshot %s\n" ${snaps[$index]}
+                                printf "Destroying OLD snapshot %s\n" "${snaps[$index]}"
                                 $ZFS destroy ${snaps[$index]}
                                 ## decrease scount and increase index
                                 let "scount -= 1"; let "index += 1"
                         done
                 fi
                 ## come on already...make that snapshot
-                printf "Creating ZFS snapshot %s@%s\n" ${local_set} ${sname}
+                printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
                 ## check if we are supposed to be recurrsive
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
                     $ZFS snapshot ${local_set}@${sname}
@@ -246,7 +247,7 @@ init() {
 ## attempt to load configuration
 if [ "${1}x" != "x" ] && [ -f "${1}" ]; then
     ## source passed config
-    printf "Sourcing configuration from %s\n" ${1}
+    printf "Sourcing configuration from %s\n" "${1}"
     . "${1}"
 elif [ -f "config.sh" ]; then
     ## source default config
@@ -255,7 +256,7 @@ elif [ -f "config.sh" ]; then
 else
     ## display error
     printf "ERROR: Cannot continue without a valid configuration file!\n"
-    printf "Usage: %s <config>\n" ${0}
+    printf "Usage: %s <config>\n" "${0}"
     ## exit
     exit 0
 fi
