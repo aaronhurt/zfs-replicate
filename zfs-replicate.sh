@@ -203,8 +203,10 @@ do_snap() {
                 printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
                 ## check if we are supposed to be recurrsive
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
+                    printf "RUNNING: %s snapshot %s@%s" "${ZFS}" "${local_set}" "${sname}"
                     $ZFS snapshot ${local_set}@${sname}
                 else
+                    printf "RUNNING: %s snapshot -r %s@%s" "${ZFS}" "${local_set}" "${sname}"
                     $ZFS snapshot -r ${local_set}@${sname}
                 fi
                 ## check return
