@@ -14,7 +14,7 @@ check_old_log() {
         ## initialize index
         local index=0
         ## find existing logs
-        for log in $(find ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
+        for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
                 ## get file change time via stat (platform specific)
                 case "$(uname -s)" in
                     Linux|SunOS)
