@@ -65,6 +65,12 @@ RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
 ## path to zfs binary
 ZFS=/sbin/zfs
 
+## path to GNU find binary
+##
+## solaris `find` does not support the -maxdepth option, which is required
+## on solaris 11, GNU find is typically located at /usr/bin/gfind
+FIND=/usr/bin/find
+
 ## get the current date info
 DOW=$(date "+%a")
 MOY=$(date "+%m")
