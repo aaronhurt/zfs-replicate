@@ -3,6 +3,9 @@
 ## file revision $Id$
 ##
 
+## OPTIONAL: Add a Set Name to keep multiple backup sets seperate.
+# SETNAME="name-of-set"
+
 ## datasets to replicate - use zfs paths not mount points...
 ## format is local_pool/local_fs:remote_pool or
 ## local_pool/local_fs:remote_pool/remote_fs the local name
@@ -82,7 +85,11 @@ CYR=$(date "+%Y")
 ## ie: pool0/someplace@autorep-${NAMETAG}
 NAMETAG="${MOY}${DOM}${CYR}_${NOW}"
 
+## check if a set name is specified
+## This code shouldn't be in config.
+if [ -z ${SETNAME+x} ]; then SETSEP=""; else SETSEP="-"; fi
+
 ## the log file...you need to prepend with
 ## autorep- in order for log cleanup to work
 ## using the default below is strongly suggested
-LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
+LOGFILE="${LOGBASE}/autorep-${SETNAME}${SETSEP}${NAMETAG}.log"

@@ -14,7 +14,7 @@ check_old_log() {
         ## initialize index
         local index=0
         ## find existing logs
-        for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
+        for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-${SETNAME}${SETSEP}\*); do
                 ## get file change time via stat (platform specific)
                 case "$(uname -s)" in
                     Linux|SunOS)
@@ -135,7 +135,7 @@ do_snap() {
         ## make sure we aren't ever creating simultaneous snapshots
         check_lock "${LOGBASE}/.snapshot.lock"
         ## set our snap name
-        local sname="autorep-${NAMETAG}"
+        local sname="autorep-${SETNAME}${SETSEP}${NAMETAG}"
         ## generate snapshot list and cleanup old snapshots
         for foo in $REPLICATE_SETS; do
                 ## split dataset into local and remote parts and trim trailing slashes
@@ -156,10 +156,10 @@ do_snap() {
                 ## they were made by this script
                 if [ $RECURSE_CHILDREN -ne 1 ]; then
                     local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
-                        grep "${local_set}\@autorep-")
+                        grep "${local_set}\@autorep-${SETNAME}${SETSEP}")
                 else
                     local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
-                        grep "${local_set}\@autorep-")
+                        grep "${local_set}\@autorep-${SETNAME}${SETSEP}")
                 fi
                 ## just a counter var
                 local index=0
