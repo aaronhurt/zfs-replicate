@@ -130,6 +130,16 @@ do_send() {
         clear_lock "${LOGBASE}/.send.lock"
 }
 
+do_destroy() {
+    local snapshot="${1}"
+    if [ $RECURSE_CHILDREN -ne 1 ]; then
+        local destroyargs=""
+    else
+	local destroyargs="-r"
+    fi
+    ${ZFS} destroy ${destroyargs} ${snapshot}
+}
+
 ## create and manage our zfs snapshots
 do_snap() {
         ## make sure we aren't ever creating simultaneous snapshots
@@ -172,7 +182,7 @@ do_snap() {
                                 ## looks like it's here...we better kill it
                                 ## this shouldn't happen normally
                                 printf "Destroying DUPLICATE snapshot %s@%s\n" "${local_set}" "${sname}"
-                                $ZFS destroy ${local_set}@${sname}
+                                do_destroy ${local_set}@${sname}
                         else
                                 ## append this snap to an array
                                 snaps[$index]=$sn
@@ -194,7 +204,7 @@ do_snap() {
                                 ## snaps are sorted above by creation in
                                 ## ascending order
                                 printf "Destroying OLD snapshot %s\n" "${snaps[$index]}"
-                                $ZFS destroy ${snaps[$index]}
+                                do_destroy ${snaps[$index]}
                                 ## decrease scount and increase index
                                 let "scount -= 1"; let "index += 1"
                         done
