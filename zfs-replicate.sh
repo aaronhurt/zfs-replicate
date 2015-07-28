@@ -126,8 +126,10 @@ do_send() {
         printf "Sending snapshots...\n"
         printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
         ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
+        local send_status=$?
         ## clear lockfile
         clear_lock "${LOGBASE}/.send.lock"
+        return ${send_status}
 }
 
 do_destroy() {
@@ -231,6 +233,12 @@ do_snap() {
                 else
                         do_send "NULL" ${local_set}@${sname} ${remote_set}
                 fi
+
+		if [ $? != 0 ]; then
+		    printf "ERROR: failed to send snapshot - ${local_set}@${sname}\n"
+		    printf "Deleting the local snapshot - ${local_set}@${sname}\n"
+		    do_destroy ${local_set}@${sname}
+		fi
         done
         ## clear our lockfile
         clear_lock "${LOGBASE}/.snapshot.lock"
