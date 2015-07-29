@@ -9,93 +9,93 @@
 
 ## check log count and delete old
 check_old_log() {
-        ## declare log array
-        declare -a logs=()
-        ## initialize index
-        local index=0
-        ## find existing logs
-        for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
-                ## get file change time via stat (platform specific)
-                case "$(uname -s)" in
-                    Linux|SunOS)
-                        local fstat=$(stat -c %Z ${log})
-                    ;;
-                    *)
-                        local fstat=$(stat -f %c ${log})
-                    ;;
-                esac
-                ## append logs to array with creation time
-                logs[$index]="${fstat}\t${log}\n"
-                ## increase index
-                let "index += 1"
+    ## declare log array
+    declare -a logs=()
+    ## initialize index
+    local index=0
+    ## find existing logs
+    for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
+        ## get file change time via stat (platform specific)
+        case "$(uname -s)" in
+            Linux|SunOS)
+                local fstat=$(stat -c %Z ${log})
+            ;;
+            *)
+                local fstat=$(stat -f %c ${log})
+            ;;
+        esac
+        ## append logs to array with creation time
+        logs[$index]="${fstat}\t${log}\n"
+        ## increase index
+        let "index += 1"
+    done
+    ## set log count
+    local lcount=${#logs[@]}
+    ## check count ... if greater than keep loop and delete
+    if [ $lcount -gt ${LOG_KEEP} ]; then
+        ## build new array in descending age order and reset index
+        declare -a slogs=(); local index=0
+        ## loop through existing array
+        for log in $(echo -e ${logs[@]:0} | sort -rn | cut -f2); do
+            ## append log to array
+            slogs[$index]=${log}
+            ## increase index
+            let "index += 1"
         done
-        ## set log count
-        local lcount=${#logs[@]}
-        ## check count ... if greater than keep loop and delete
-        if [ $lcount -gt ${LOG_KEEP} ]; then
-                ## build new array in descending age order and reset index
-                declare -a slogs=(); local index=0
-                ## loop through existing array
-                for log in $(echo -e ${logs[@]:0} | sort -rn | cut -f2); do
-                        ## append log to array
-                        slogs[$index]=${log}
-                        ## increase index
-                        let "index += 1"
-                done
-                ## delete excess logs
-                printf "deleting old logs: %s ...\n" "${slogs[@]:${LOG_KEEP}}"
-                rm -rf ${slogs[@]:${LOG_KEEP}}
-        fi
+        ## delete excess logs
+        printf "deleting old logs: %s ...\n" "${slogs[@]:${LOG_KEEP}}"
+        rm -rf ${slogs[@]:${LOG_KEEP}}
+    fi
 }
 
 ## exit 0 and delete old log files
 exit_clean() {
-        ## print errors
-        if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
-                printf "Last operation returned error code: %s\n" "${1}"
-        fi
-        ## check log files
-        check_old_log
-        ## always exit 0
-        printf "Exiting...\n"
-        exit 0
+    ## print errors
+    if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
+        printf "Last operation returned error code: %s\n" "${1}"
+    fi
+    ## check log files
+    check_old_log
+    ## always exit 0
+    printf "Exiting...\n"
+    exit 0
 }
 
 ## lockfile creation and maintenance
 check_lock () {
-        ## check our lockfile status
-        if [ -f "${1}" ]; then
-                ## get lockfile contents
-                local lpid=$(cat "${1}")
-                ## see if this pid is still running
-                local ps=$(ps auxww|grep $lpid|grep -v grep)
-                if [ "${ps}x" != 'x' ]; then
-                        ## looks like it's still running
-                        printf "ERROR: This script is already running as: %s\n" "${ps}"
-                else
-                        ## well the lockfile is there...stale?
-                        printf "ERROR: Lockfile exists: %s\n" "${1}"
-                        printf "However, the contents do not match any "
-                        printf "currently running process...stale lockfile?\n"
-                fi
-                ## tell em what to do...
-                printf "To run script please delete: %s\n" "${1}"
-                ## compress log and exit...
-                exit_clean
+    ## check our lockfile status
+    if [ -f "${1}" ]; then
+        ## get lockfile contents
+        local lpid=$(cat "${1}")
+        ## see if this pid is still running
+        local ps=$(ps auxww|grep $lpid|grep -v grep)
+        if [ "${ps}x" != 'x' ]; then
+            ## looks like it's still running
+            printf "ERROR: This script is already running as: %s\n" "${ps}"
         else
-                ## well no lockfile..let's make a new one
-                printf "Creating lockfile: %s\n" "${1}"
-                echo $$ > "${1}"
+            ## well the lockfile is there...stale?
+            printf "ERROR: Lockfile exists: %s\n" "${1}"
+            printf "However, the contents do not match any "
+            printf "currently running process...stale lockfile?\n"
         fi
+        ## tell em what to do...
+        printf "To run script please delete: %s\n" "${1}"
+        ## compress log and exit...
+        exit_clean
+    else
+        ## well no lockfile..let's make a new one
+        printf "Creating lockfile: %s\n" "${1}"
+        echo $$ > "${1}"
+    fi
 }
 
 ## delete lockiles
 clear_lock() {
-        ## delete lockfiles...and that's all we do here
-        if [ -f "${1}" ]; then
-                printf "Deleting lockfile: %s\n" "${1}"
-                rm "${1}"
-        fi
+    ## delete lockfiles...and that's all we do here
+    if [ -f "${1}" ]; then
+        printf "Deleting lockfile: %s\n" "${1}"
+        rm "${1}"
+    fi
 }
 
 ## check remote system health
@@ -114,134 +114,140 @@ check_remote() {
 
 ## main replication function
 do_send() {
-        ## check our send lockfile
-        check_lock "${LOGBASE}/.send.lock"
-        ## create initial send command based on arguments
-        ## if first snapname is NULL we do not generate an inremental
-        if [ "${1}" == "NULL" ]; then
-                local sendargs="-R"
-        else
-                local sendargs="-R -I ${1}"
-        fi
-        printf "Sending snapshots...\n"
-        printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
-        ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
-        local send_status=$?
-        ## clear lockfile
-        clear_lock "${LOGBASE}/.send.lock"
-        return ${send_status}
+    ## check our send lockfile
+    check_lock "${LOGBASE}/.send.lock"
+    ## create initial send command based on arguments
+    ## if first snapname is NULL we do not generate an inremental
+    if [ "${1}" == "NULL" ]; then
+        local sendargs="-R"
+    else
+        local sendargs="-R -I ${1}"
+    fi
+    printf "Sending snapshots...\n"
+    printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
+    ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
+    ## get status
+    local send_status=$?
+    ## clear lockfile
+    clear_lock "${LOGBASE}/.send.lock"
+    ## return status
+    return ${send_status}
 }
 
+## small wrapper around zfs destrou
 do_destroy() {
+    ## get file set argument
     local snapshot="${1}"
+    ## check settings
     if [ $RECURSE_CHILDREN -ne 1 ]; then
         local destroyargs=""
     else
-	local destroyargs="-r"
+        local destroyargs="-r"
     fi
+    ## call zfs destroy
     ${ZFS} destroy ${destroyargs} ${snapshot}
 }
 
 ## create and manage our zfs snapshots
 do_snap() {
-        ## make sure we aren't ever creating simultaneous snapshots
-        check_lock "${LOGBASE}/.snapshot.lock"
-        ## set our snap name
-        local sname="autorep-${NAMETAG}"
-        ## generate snapshot list and cleanup old snapshots
-        for foo in $REPLICATE_SETS; do
-                ## split dataset into local and remote parts and trim trailing slashes
-                local local_set=$(echo $foo|cut -f1 -d:|sed 's/\/*$//')
-                local remote_set=$(echo $foo|cut -f2 -d:|sed 's/\/*$//')
-                ## check for root datasets
-                if [ $ALLOW_ROOT_DATASETS -ne 1 ]; then
-                    if [ "${local_set}" == $(basename "${local_set}") ] && \
-                        [ "${remote_set}" == $(basename "${remote_set}") ]; then
-                        printf "WARNING: Replicating root datasets can lead to data loss.\n"
-                        printf "To allow root dataset replication and disable this warning "
-                        printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" "${foo}"
-                        ## skip this set
-                        continue
-                    fi
-                fi
-                ## get current existing snapshots that look like
-                ## they were made by this script
-                if [ $RECURSE_CHILDREN -ne 1 ]; then
-                    local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
-                        grep "${local_set}\@autorep-")
-                else
-                    local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
-                        grep "${local_set}\@autorep-")
-                fi
-                ## just a counter var
-                local index=0
-                ## our snapshot array
-                declare -a snaps=()
-                ## to the loop...
-                for sn in $temps; do
-                        ## while we are here...check for our current snap name
-                        if [ "${sn}" == "${local_set}@${sname}" ]; then
-                                ## looks like it's here...we better kill it
-                                ## this shouldn't happen normally
-                                printf "Destroying DUPLICATE snapshot %s@%s\n" "${local_set}" "${sname}"
-                                do_destroy ${local_set}@${sname}
-                        else
-                                ## append this snap to an array
-                                snaps[$index]=$sn
-                                ## increase our index counter
-                                let "index += 1"
-                        fi
-                done
-                ## set our snap count and reset our index
-                local scount=${#snaps[@]}; local index=0
-                ## set our base snap for incremental generation below
-                if [ $scount -ge 1 ]; then
-                    local base_snap=${snaps[$scount-1]}
-                fi
-                ## how many snapshots did we end up with..
-                if [ $scount -ge $SNAP_KEEP ]; then
-                        ## oops...too many snapshots laying around
-                        ## we need to destroy some of these
-                        while [ $scount -ge $SNAP_KEEP ]; do
-                                ## snaps are sorted above by creation in
-                                ## ascending order
-                                printf "Destroying OLD snapshot %s\n" "${snaps[$index]}"
-                                do_destroy ${snaps[$index]}
-                                ## decrease scount and increase index
-                                let "scount -= 1"; let "index += 1"
-                        done
-                fi
-                ## come on already...make that snapshot
-                printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
-                ## check if we are supposed to be recurrsive
-                if [ $RECURSE_CHILDREN -ne 1 ]; then
-                    printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                    $ZFS snapshot ${local_set}@${sname}
-                else
-                    printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                    $ZFS snapshot -r ${local_set}@${sname}
-                fi
-                ## check return
-                if [ $? -ne 0 ]; then
-                        ## oops...that's not right
-                        exit_clean $?
-                fi
-                ## send incremental if snap count 1 or more
-                ## otherwise send a regular stream
-                if [ $scount -ge 1 ]; then
-                        do_send ${base_snap} ${local_set}@${sname} ${remote_set}
-                else
-                        do_send "NULL" ${local_set}@${sname} ${remote_set}
-                fi
-
-		if [ $? != 0 ]; then
-		    printf "ERROR: failed to send snapshot - ${local_set}@${sname}\n"
-		    printf "Deleting the local snapshot - ${local_set}@${sname}\n"
-		    do_destroy ${local_set}@${sname}
-		fi
+    ## make sure we aren't ever creating simultaneous snapshots
+    check_lock "${LOGBASE}/.snapshot.lock"
+    ## set our snap name
+    local sname="autorep-${NAMETAG}"
+    ## generate snapshot list and cleanup old snapshots
+    for foo in $REPLICATE_SETS; do
+        ## split dataset into local and remote parts and trim trailing slashes
+        local local_set=$(echo $foo|cut -f1 -d:|sed 's/\/*$//')
+        local remote_set=$(echo $foo|cut -f2 -d:|sed 's/\/*$//')
+        ## check for root datasets
+        if [ $ALLOW_ROOT_DATASETS -ne 1 ]; then
+            if [ "${local_set}" == $(basename "${local_set}") ] && \
+                [ "${remote_set}" == $(basename "${remote_set}") ]; then
+                printf "WARNING: Replicating root datasets can lead to data loss.\n"
+                printf "To allow root dataset replication and disable this warning "
+                printf "set ALLOW_ROOT_DATASETS=1 in this script.  Skipping: %s\n\n" "${foo}"
+                ## skip this set
+                continue
+            fi
+        fi
+        ## get current existing snapshots that look like
+        ## they were made by this script
+        if [ $RECURSE_CHILDREN -ne 1 ]; then
+            local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
+                grep "${local_set}\@autorep-")
+        else
+            local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
+                grep "${local_set}\@autorep-")
+        fi
+        ## just a counter var
+        local index=0
+        ## our snapshot array
+        declare -a snaps=()
+        ## to the loop...
+        for sn in $temps; do
+            ## while we are here...check for our current snap name
+            if [ "${sn}" == "${local_set}@${sname}" ]; then
+                ## looks like it's here...we better kill it
+                ## this shouldn't happen normally
+                printf "Destroying DUPLICATE snapshot %s@%s\n" "${local_set}" "${sname}"
+                do_destroy ${local_set}@${sname}
+            else
+                ## append this snap to an array
+                snaps[$index]=$sn
+                ## increase our index counter
+                let "index += 1"
+            fi
         done
-        ## clear our lockfile
-        clear_lock "${LOGBASE}/.snapshot.lock"
+        ## set our snap count and reset our index
+        local scount=${#snaps[@]}; local index=0
+        ## set our base snap for incremental generation below
+        if [ $scount -ge 1 ]; then
+            local base_snap=${snaps[$scount-1]}
+        fi
+        ## how many snapshots did we end up with..
+        if [ $scount -ge $SNAP_KEEP ]; then
+            ## oops...too many snapshots laying around
+            ## we need to destroy some of these
+            while [ $scount -ge $SNAP_KEEP ]; do
+                ## snaps are sorted above by creation in
+                ## ascending order
+                printf "Destroying OLD snapshot %s\n" "${snaps[$index]}"
+                do_destroy ${snaps[$index]}
+                ## decrease scount and increase index
+                let "scount -= 1"; let "index += 1"
+            done
+        fi
+        ## come on already...make that snapshot
+        printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
+        ## check if we are supposed to be recurrsive
+        if [ $RECURSE_CHILDREN -ne 1 ]; then
+            printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
+            $ZFS snapshot ${local_set}@${sname}
+        else
+            printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
+            $ZFS snapshot -r ${local_set}@${sname}
+        fi
+        ## check return
+        if [ $? -ne 0 ]; then
+            ## oops...that's not right
+            exit_clean $?
+        fi
+        ## send incremental if snap count 1 or more
+        ## otherwise send a regular stream
+        if [ $scount -ge 1 ]; then
+            do_send ${base_snap} ${local_set}@${sname} ${remote_set}
+        else
+            do_send "NULL" ${local_set}@${sname} ${remote_set}
+        fi
+        ## check return of do_send
+        if [ $? != 0 ]; then
+            printf "ERROR: Failed to send snapshot %s@$%s\n" "${local_set}" "${sname}"
+            printf "Deleting the local snapshot %s@$%s\n" "${local_set}" "${sname}"
+            do_destroy ${local_set}@${sname}
+        fi
+    done
+    ## clear our lockfile
+    clear_lock "${LOGBASE}/.snapshot.lock"
 }
 
 ## it all starts here...
