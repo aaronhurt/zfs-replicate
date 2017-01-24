@@ -279,6 +279,10 @@ elif [ -f "config.sh" ]; then
     ## source default config
     printf "Sourcing configuration from config.sh\n"
     . "config.sh"
+elif [ -f "$(dirname ${0})/config.sh" ]; then
+    ## source script path config
+    printf "Sourcing configuration from $(dirname ${0})/config.sh\n"
+    . "$(dirname ${0})/config.sh"
 else
     ## display error
     printf "ERROR: Cannot continue without a valid configuration file!\n"
