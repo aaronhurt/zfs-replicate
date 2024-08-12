@@ -1,72 +1,75 @@
-## zfs-replicate sample configuration file - edit as needed
-## config.sample.sh
-## file revision $Id$
-##
+## zfs-replicate configuration file - edit as needed
+## config.sh
+
+## ip address or hostname of a remote server
+## not used if TYPE is set to LOCAL
+REMOTE_SERVER="192.168.1.250"
+
+## set replication mode, PUSH or PULL
+## PULL replicates from remote to local
+## PUSH replicates from local to remote
+## default is PULL
+MODE="PULL"
+
+## set replication TYPE to LOCAL for local only replication
+## or REMOTE for remote replication
+## REMOTE - remote server replication (default)
+## LOCAL - local dataset replication
+TYPE="REMOTE"
 
 ## datasets to replicate - use zfs paths not mount points...
-## format is local_pool/local_fs:remote_pool or
-## local_pool/local_fs:remote_pool/remote_fs the local name
-## will be used on the remote end if not specified
-REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
+## format is localpool/localdataset:remotepool or
+## localpool/localdataset:remotepool/remotedataset
+## can include multiple strings separated by a "space"
+## pools and dataset pairs must exist on the respective servers
+## PUSH will push the local to the remote
+## PULL will pull the local to the remote
+REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
 
-## allow replication of root datasets - if you specify root
-## datasets above and do not toggle this setting the
-## script will generate a warning and skip replicating
-## root datasets
+## option to recursively snapshot children of all datasets listed above
+## 0 - disable (default)
+## 1 - enable
+RECURSE_CHILDREN=0
+
+## if ANY replication task results in an error because of either
+##  - no common snapshot
+##  - snapshots detected on destination
+##  - failure to replicate incremental snapshot
+## this will start the replication from scratch if set to 1
+## and overwrite the existing data on the destination
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+ALLOW_REPLICATE_FROM_SCRATCH=0
+
+## Allow replication of root datasets
+## if you specify root datasets above and do not toggle this setting the
+## script will generate a warning and skip replicating root datasets
 ## 0 - disable (default)
 ## 1 - enable (use at your own risk)
 ALLOW_ROOT_DATASETS=0
 
-## option to recurrsively snapshot children of
-## all datasets listed above
-## 0 - disable (previous behavior)
-## 1 - enable
-RECURSE_CHILDREN=0
-
-## number of snapshots to keep of each dataset
-## snaps in excess of this number will be expired
-## oldest deleted first...must be 2 or greater
+## number of snapshots to keep for each dataset
+## older snapshots will be deleted
 SNAP_KEEP=2
 
-## number of logs to keep in path ... logs will be
-## deleted in order of age with oldest going first
-LOG_KEEP=10
+## number of logs to keep
+## older logs will be deleted
+LOG_KEEP=5
 
-## where to place log files and temporary lock files
-LOGBASE=/root/logs
-
-## ip address or hostname of a remote server
-## this variable may be referenced in the
-## additional settings below
-##
-## this should not be used for local replication
-## and could be commented out and ignored
-REMOTE_SERVER="192.168.100.2"
+## log files directory (defaults to script path)
+SCRIPT=$(readlink -f "$0")
+SCRIPTPATH=$(dirname "${SCRIPT}")
+LOGBASE="${SCRIPTPATH}/logs"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
-##
-## this is not used for local replication
-## and could be commented out and ignored
+## not used if TYPE is set to LOCAL
 REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 
-## pipe to your remote host...the pool/snap
-## DO NOT INCLUDE THE PIPE (|) CHARACTER
-## fs names from this host will be used on the remote
-##
-## for increased transfer speed you may want to specifically
-## enumerate your prefered cipher order in your ssh command:
-## ssh -c arcfour256,arcfour128,blowfish-cbc,aes128-ctr,aes192-ctr,aes256-ctr
-##
-## for local replication do not
-## call ssh or reference a remote server
-RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
-
-## path to zfs binary
-ZFS=/sbin/zfs
+## path to zfs binary (only command for now)
+ZFS=zfs
 
 ## path to GNU find binary
-##
 ## solaris `find` does not support the -maxdepth option, which is required
 ## on solaris 11, GNU find is typically located at /usr/bin/gfind
 FIND=/usr/bin/find
@@ -82,7 +85,7 @@ CYR=$(date "+%Y")
 ## ie: pool0/someplace@autorep-${NAMETAG}
 NAMETAG="${MOY}${DOM}${CYR}_${NOW}"
 
-## the log file...you need to prepend with
+## the log file needs to start with
 ## autorep- in order for log cleanup to work
 ## using the default below is strongly suggested
 LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"

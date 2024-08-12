@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 ## zfs-replicate.sh
-## file revision $Id$
-##
 
 ############################################
 ##### warning gremlins live below here #####
@@ -49,20 +47,37 @@ check_old_log() {
 }
 
 ## exit 0 and delete old log files
-exit_clean() {
+exit_clean () {
     ## print errors
     if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
         printf "Last operation returned error code: %s\n" "${1}"
     fi
     ## check log files
     check_old_log
+    clear_lock "${LOGBASE}"/.push.lock
+    clear_lock "${LOGBASE}"/.pull.lock
+    clear_lock "${LOGBASE}"/.snapshot.lock
     ## always exit 0
-    printf "Exiting...\n"
+    printf "SUCCESS\n"
+    exit 0 
+}
+
+exit_error () {
+    ## print errors
+    if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
+        printf "Last operation returned error code: %s\n" "${1}"
+    fi
+    ## check log files
+    check_old_log
+    clear_lock "${LOGBASE}"/.push.lock
+    clear_lock "${LOGBASE}"/.pull.lock
+    clear_lock "${LOGBASE}"/.snapshot.lock
+    printf "FAILED\n"
     exit 0
 }
 
 ## lockfile creation and maintenance
-check_lock () {
+check_lock() {
     ## check our lockfile status
     if [ -f "${1}" ]; then
         ## get lockfile contents
@@ -81,7 +96,7 @@ check_lock () {
         ## tell em what to do...
         printf "To run script please delete: %s\n" "${1}"
         ## compress log and exit...
-        exit_clean
+        exit_error
     else
         ## well no lockfile..let's make a new one
         printf "Creating lockfile: %s\n" "${1}"
@@ -89,7 +104,7 @@ check_lock () {
     fi
 }
 
-## delete lockiles
+## delete lockfiles
 clear_lock() {
     ## delete lockfiles...and that's all we do here
     if [ -f "${1}" ]; then
@@ -107,34 +122,122 @@ check_remote() {
         ## exit if above returned non-zero
         if [ $? != 0 ]; then
             printf "ERROR: Remote health check '%s' failed!\n" "${REMOTE_CHECK}"
-            exit_clean
+            exit_error
         fi
     fi
 }
 
-## main replication function
-do_send() {
-    ## check our send lockfile
-    check_lock "${LOGBASE}/.send.lock"
-    ## create initial send command based on arguments
+## push replication function
+do_push() {
+    ## check our push lockfile
+    check_lock "${LOGBASE}/.push.lock"
+    ## create initial push command based on arguments
     ## if first snapname is NULL we do not generate an inremental
-    if [ "${1}" == "NULL" ]; then
-        local sendargs="-R"
-    else
-        local sendargs="-R -I ${1}"
+    if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
+		local dest_snap="$(ssh ${REMOTE_SERVER} $ZFS list -t snapshot -o name | grep ${remote_set} 2>/dev/null | grep autorep- 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
+    elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
+		local dest_snap="$(${ZFS} list -t snapshot -o name | grep ${remote_set} 2>/dev/null | grep autorep- 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
     fi
+    local source_snap="$($ZFS list -t snapshot -o name | grep ${dest_snap} 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
+    local common_snap="${local_set}@${dest_snap}"
+    local receiveargs="-vFd"
+    if [ "${1}" == "NULL" ] && [ ${RECURSE_CHILDREN} -eq 1 ]; then
+        local sendargs="-R"
+    elif [ "${1}" == "NULL" ] && [ ${RECURSE_CHILDREN} -eq 0 ]; then
+	local sendargs=""
+    elif [ "${dest_snap}" == "${source_snap}" ] && [ ${RECURSE_CHILDREN} -eq 1 ]; then
+        local sendargs="-R -I ${common_snap}"
+    elif [ "${dest_snap}" == "${source_snap}" ] && [ ${RECURSE_CHILDREN} -eq 0 ]; then
+        local sendargs="-I ${common_snap}"
+    fi		
     printf "Sending snapshots...\n"
-    printf "RUNNING: %s send %s %s | %s %s\n" "${ZFS}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${3}"
-    ${ZFS} send ${sendargs} ${2} | ${RECEIVE_PIPE} ${3}
+    printf "RUNNING: %s %s %s | %s %s %s\n" "${SEND_PIPE}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${receiveargs}" "${3}"
+    if ! ${SEND_PIPE} ${sendargs} ${2} | ${RECEIVE_PIPE} ${receiveargs} ${3}; then 
+	if [ ${ALLOW_REPLICATE_FROM_SCRATCH} -eq 1 ]; then
+		echo "No common snapshots found, but replication from scratch IS allowed."
+		echo "Starting replication from scratch..."
+    		if [ ${RECURSE_CHILDREN} -eq 1 ]; then
+			local sendargs="-R"
+		elif [ ${RECURSE_CHILDREN} -eq 0 ]; then
+			local sendargs=""
+		fi
+   		if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
+			ssh ${REMOTE_SERVER} "${ZFS} list -o name -t snapshot | grep ${remote_set} | xargs -n 1 ${ZFS} destroy"
+		elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
+			${ZFS} list -o name -t snapshot | grep ${remote_set} | xargs -n1 ${ZFS} destroy
+		fi
+		if ! ${SEND_PIPE} ${sendargs} ${2} | ${RECEIVE_PIPE} ${receiveargs} ${3}; then
+			exit_error
+		fi
+	elif [ ${ALLOW_REPLICATE_FROM_SCRATCH} -ne 1 ]; then
+		echo "No common snapshots found, and replication from scratch IS NOT allowed."
+		exit_error
+	fi
+    fi
     ## get status
-    local send_status=$?
+    local push_status=$?
     ## clear lockfile
-    clear_lock "${LOGBASE}/.send.lock"
+    clear_lock "${LOGBASE}/.push.lock"
     ## return status
-    return ${send_status}
+    return ${push_status}
 }
 
-## small wrapper around zfs destrou
+# pull replication function
+do_pull() {
+    ## check our pull lockfile
+    check_lock "${LOGBASE}/.pull.lock"
+    ## create initial receive command based on arguments
+    ## if first snapname is NULL we do not generate an inremental
+    local dest_snap="$($ZFS list -t snapshot -o name | grep ${local_set} 2>/dev/null | grep autorep- 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
+    if [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
+		local source_snap="$(ssh ${REMOTE_SERVER} $ZFS list -t snapshot -o name | grep ${dest_snap} 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
+    elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
+		local source_snap="$(${ZFS} list -t snapshot -o name | grep ${dest_snap} 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
+    fi
+    local common_snap="${remote_set}@${dest_snap}"
+    local receiveargs="-vFd"
+    if [ "${1}" == "NULL" ] && [ ${RECURSE_CHILDREN} -eq 1 ]; then
+        local sendargs="-R"
+    elif [ "${1}" == "NULL" ] && [ ${RECURSE_CHILDREN} -eq 0 ]; then
+	local sendargs=""
+    elif [ "${dest_snap}" == "${source_snap}" ] && [ ${RECURSE_CHILDREN} -eq 1 ]; then
+	local sendargs="-R -I ${common_snap}"
+    elif [ "${dest_snap}" == "${source_snap}" ] && [ ${RECURSE_CHILDREN} -eq 0 ]; then
+	local sendargs="-I ${common_snap}"
+    fi
+    printf "Sending snapshots...\n"
+    printf "RUNNING: %s %s %s | %s %s %s\n" "${SEND_PIPE}" "${sendargs}" "${2}" "${RECEIVE_PIPE}" "${receiveargs}" "${3}"
+    if ! ${SEND_PIPE} ${sendargs} ${2} | ${RECEIVE_PIPE} ${receiveargs} ${3}; then 
+	if [ ${ALLOW_REPLICATE_FROM_SCRATCH} -eq 1 ]; then
+		echo "No common snapshots found, but replication from scratch IS allowed."
+		echo "Starting replication from scratch..."
+    		if [ ${RECURSE_CHILDREN} -eq 1 ]; then
+			local sendargs="-R"
+		elif [ ${RECURSE_CHILDREN} -eq 0 ]; then
+			local sendargs=""
+		fi
+   		if [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
+			${ZFS} list -o name -t snapshot | grep ${local_set} | xargs -n1 ${ZFS} destroy
+		elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
+			${ZFS} list -o name -t snapshot | grep ${local_set} | xargs -n1 ${ZFS} destroy
+		fi
+		if ! ${SEND_PIPE} ${sendargs} ${2} | ${RECEIVE_PIPE} ${receiveargs} ${3}; then
+			exit_error
+		fi
+	elif [ ${ALLOW_REPLICATE_FROM_SCRATCH} -ne 1 ]; then
+		echo "No common snapshots found, and replication from scratch IS NOT allowed."
+		exit_error
+	fi
+    fi
+    ## get status
+    local pull_status=$?
+    ## clear lockfile
+    clear_lock "${LOGBASE}/.pull.lock"
+    ## return status
+    return ${pull_status}
+}
+
+## small wrapper around zfs destroy
 do_destroy() {
     ## get file set argument
     local snapshot="${1}"
@@ -145,7 +248,15 @@ do_destroy() {
         local destroyargs="-r"
     fi
     ## call zfs destroy
-    ${ZFS} destroy ${destroyargs} ${snapshot}
+    if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
+        ${ZFS} destroy ${destroyargs} ${snapshot}
+    elif [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
+        ssh ${REMOTE_SERVER} ${ZFS} destroy ${destroyargs} ${snapshot}
+    elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
+        ${ZFS} destroy ${destroyargs} ${snapshot}
+    elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
+	${ZFS} destroy ${destroyargs} ${snapshot}
+    fi
 }
 
 ## create and manage our zfs snapshots
@@ -172,12 +283,38 @@ do_snap() {
         fi
         ## get current existing snapshots that look like
         ## they were made by this script
-        if [ $RECURSE_CHILDREN -ne 1 ]; then
-            local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
-                grep "${local_set}\@autorep-")
-        else
-            local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
-                grep "${local_set}\@autorep-")
+        if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
+                    grep "${local_set}\@autorep-")
+            else
+                local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
+                    grep "${local_set}\@autorep-")
+            fi
+        elif [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                local temps=$(ssh $REMOTE_SERVER $ZFS list -Hr -o name -s creation -t snapshot -d 1 ${remote_set}|\
+                    grep "${remote_set}\@autorep-")
+            else
+                local temps=$(ssh $REMOTE_SERVER $ZFS list -Hr -o name -s creation -t snapshot ${remote_set}|\
+                    grep "${remote_set}\@autorep-")
+            fi
+        elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${local_set}|\
+                    grep "${local_set}\@autorep-")
+            else
+                local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${local_set}|\
+                    grep "${local_set}\@autorep-")
+	    fi
+        elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                local temps=$($ZFS list -Hr -o name -s creation -t snapshot -d 1 ${remote_set}|\
+                    grep "${remote_set}\@autorep-")
+            else
+                local temps=$($ZFS list -Hr -o name -s creation -t snapshot ${remote_set}|\
+                    grep "${remote_set}\@autorep-")
+	    fi
         fi
         ## just a counter var
         local index=0
@@ -185,18 +322,21 @@ do_snap() {
         declare -a snaps=()
         ## to the loop...
         for sn in $temps; do
-            ## while we are here...check for our current snap name
-            if [ "${sn}" == "${local_set}@${sname}" ]; then
-                ## looks like it's here...we better kill it
-                ## this shouldn't happen normally
-                printf "Destroying DUPLICATE snapshot %s@%s\n" "${local_set}" "${sname}"
-                do_destroy ${local_set}@${sname}
-            else
-                ## append this snap to an array
-                snaps[$index]=$sn
-                ## increase our index counter
-                let "index += 1"
+            ## Check current snapshot name and destroy duplicates (if they exist)
+            if [ ${MODE} == PUSH ]; then
+                if [ "${sn}" == "${local_set}@${sname}" ]; then
+                    printf "Destroying DUPLICATE snapshot %s@%s\n" "${local_set}" "${sname}"                
+                    do_destroy ${local_set}@${sname}
+                fi
+            elif [ ${MODE} == PULL ]; then
+                if [ "${sn}" == "${remote_set}@${sname}" ]; then
+                    printf "Destroying DUPLICATE snapshot %s@%s\n" "${remote_set}" "${sname}"                
+                    do_destroy ${remote_set}@${sname}
+                fi
             fi
+                ## append this snap to an array and increase count
+                snaps[$index]=$sn
+                let "index += 1"
         done
         ## set our snap count and reset our index
         local scount=${#snaps[@]}; local index=0
@@ -217,33 +357,90 @@ do_snap() {
                 let "scount -= 1"; let "index += 1"
             done
         fi
-        ## come on already...make that snapshot
-        printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
-        ## check if we are supposed to be recurrsive
-        if [ $RECURSE_CHILDREN -ne 1 ]; then
-            printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-            $ZFS snapshot ${local_set}@${sname}
-        else
-            printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-            $ZFS snapshot -r ${local_set}@${sname}
+        
+        ## Create snapshot and check for recursive setting
+        if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
+            printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
+                $ZFS snapshot ${local_set}@${sname}
+            else
+                printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
+                $ZFS snapshot -r ${local_set}@${sname}
+            fi
+        elif [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
+            printf "Creating ZFS snapshot %s@%s\n" "${remote_set}" "${sname}"
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
+                ssh $REMOTE_SERVER $ZFS snapshot ${remote_set}@${sname}
+            else
+                printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
+                ssh $REMOTE_SERVER $ZFS snapshot -r ${remote_set}@${sname}
+            fi
+        elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
+            printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
+                $ZFS snapshot ${local_set}@${sname}
+            else
+                printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
+                $ZFS snapshot -r ${local_set}@${sname}
+            fi
+        elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
+            printf "Creating ZFS snapshot %s@%s\n" "${remote_set}" "${sname}"
+            if [ $RECURSE_CHILDREN -ne 1 ]; then
+                printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
+                ${ZFS} snapshot ${remote_set}@${sname}
+            else
+                printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
+                ${ZFS} snapshot -r ${remote_set}@${sname}
+            fi
         fi
+
         ## check return
         if [ $? -ne 0 ]; then
             ## oops...that's not right
-            exit_clean $?
+            exit_error $?
         fi
-        ## send incremental if snap count 1 or more
-        ## otherwise send a regular stream
-        if [ $scount -ge 1 ]; then
-            do_send ${base_snap} ${local_set}@${sname} ${remote_set}
-        else
-            do_send "NULL" ${local_set}@${sname} ${remote_set}
+        ## Send incremental snaphot if count is 1 or more, otherwise send full snapshot
+        if [ ${MODE} == PUSH ]; then    
+            if [ $scount -ge 1 ]; then
+                if ! do_push ${base_snap} ${local_set}@${sname} ${remote_set}; then
+		do_destroy ${local_set}@${sname}
+		exit_error
+		fi
+            else
+                if ! do_push "NULL" ${local_set}@${sname} ${remote_set}; then
+		do_destroy ${local_set}@${sname}
+		exit_error
+		fi
+            fi
+        elif [ ${MODE} == PULL ]; then
+            if [ $scount -ge 1 ]; then
+		if ! do_pull ${base_snap} ${remote_set}@${sname} ${local_set}; then
+		do_destroy ${remote_set}@${sname}
+		exit_error
+		fi
+            else
+                if ! do_pull "NULL" ${remote_set}@${sname} ${local_set}; then
+		do_destroy ${remote_set}@${sname}
+		exit_error
+		fi
+            fi
         fi
-        ## check return of do_send
+        ## check return of replication
         if [ $? != 0 ]; then
-            printf "ERROR: Failed to send snapshot %s@$%s\n" "${local_set}" "${sname}"
-            printf "Deleting the local snapshot %s@$%s\n" "${local_set}" "${sname}"
-            do_destroy ${local_set}@${sname}
+            if [ ${MODE} = PUSH ]; then
+                printf "ERROR: Failed to send snapshot %s@$%s\n" "${local_set}" "${sname}"
+                printf "Deleting the local snapshot %s@$%s\n" "${local_set}" "${sname}"
+                do_destroy ${local_set}@${sname}
+                exit_error
+            elif [ ${MODE} = PULL ]; then
+                printf "ERROR: Failed to send snapshot %s@$%s\n" "${remote_set}" "${sname}"
+                printf "Deleting the local snapshot %s@$%s\n" "${remote_set}" "${sname}"
+                do_destroy ${remote_set}@${sname}
+                exit_error
+            fi
         fi
     done
     ## clear our lockfile
@@ -253,10 +450,39 @@ do_snap() {
 ## it all starts here...
 init() {
     ## sanity check
+    ## set pipes depending on MODE
+    if [ ${MODE} = PUSH ]; then
+	if [ ${TYPE} = REMOTE ]; then
+		RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive"
+		SEND_PIPE="zfs send"
+	elif [ ${TYPE} = LOCAL ]; then
+		RECEIVE_PIPE="zfs receive"
+		SEND_PIPE="zfs send"
+		REMOTE_CHECK=""
+	else
+		echo "Replication type is not set. Please set the TYPE"
+		echo "variable to REMOTE or LOCAL."
+	fi
+    elif [ ${MODE} = PULL ]; then
+        if [ ${TYPE} = REMOTE ]; then
+		RECEIVE_PIPE="zfs receive"
+		SEND_PIPE="ssh ${REMOTE_SERVER} zfs send"
+	elif [ ${TYPE} = LOCAL ]; then
+		RECEIVE_PIPE="zfs receive"
+		SEND_PIPE="zfs send"
+		REMOTE_CHECK=""
+	else
+		echo "Replication type is not set. Please set the TYPE variable to REMOTE or LOCAL."
+		exit_error
+	fi
+    else
+	echo "Replication mode is not set. Please set the MODE variable to PUSH or PULL."
+    	exit_error
+    fi
     if [ $SNAP_KEEP -lt 2 ]; then
         printf "ERROR: You must keep at least 2 snaps for incremental sending.\n"
         printf "Please check the setting of 'SNAP_KEEP' in the script.\n"
-        exit_clean
+        exit_error
     fi
     ## check remote health
     printf "Checking remote system...\n"
@@ -265,7 +491,7 @@ init() {
     printf "Creating snapshots...\n"
     do_snap
     ## that's it...sending called from do_snap
-    printf "Finished all operations for ...\n"
+    printf "Finished all operations for...\n"
     ## show a nice message and exit...
     exit_clean
 }
