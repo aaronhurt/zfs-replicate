@@ -1,6 +1,7 @@
-# zfs-replicate
-Bash script to automate ZFS Replication
-Forked from https://github.com/aaronhurt/zfs-replicate
+zfs-replicate
+=============
+
+Bash script to automate ZFS Replication.
 
 # Features
 - supports PUSH or PULL replication
