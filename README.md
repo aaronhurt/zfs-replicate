@@ -1,14 +1,22 @@
+# zfs-replicate
+Bash script to automate ZFS Replication
+Forked from https://github.com/aaronhurt/zfs-replicate
 
-zfs-replicate.sh
-================
-
-Simple script to replicate zfs volumes between hosts (or between pools on the same host) via incremental snapshots.
+# Features
+- supports PUSH or PULL replication
+- supports LOCAL or REMOTE replication
+- supports multiple pool/dataset pairs to replicate
+- everything is logged to `${SCRIPTPATH}/logs` by default (can be set to custom location using $LOGBASE variable) but its better to keep it together with the scripts
+- runs off a well documented `config.sh` file (see below)
+- can be run on any schedule using cron with `bash zfs-replicate.sh -config.sh`
+- (for XigmaNAS) includes a `status-report.sh` that can be used to email latest replication status, which will email the latest replication status at your preferred schedule. Simply add it as a custom script in the email settings under "System > Advanced > Email Reports" 
+- includes ALLOW_REPLICATE_FROM_SCRATCH option (see below, or `config.sh` file for details)
 
 Warning
 -------
 
 Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create
-a true 1:1 copy of the source (local) dataset in the destination (remote) dataset as currently configured.
+a true 1:1 copy of the source dataset in the destination dataset as currently configured.
 
 The configuration ```REPLICATE_SETS="zpoolone:zpooltwo"``` will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone```
 and may result in dataloss on ```zpooltwo```.
@@ -25,67 +33,80 @@ Configuration is done via a separate file that should be passed to the script on
 The file is very well commented and the contents of the sample config are shown below.
 
 ```bash
+## zfs-replicate sample configuration file - edit as needed
+## config.sample.sh
+
+## ip address or hostname of a remote server
+## comment out for local only replication
+REMOTE_SERVER="192.168.1.250"
+
+## set replication mode, PUSH or PULL
+## PULL replicates from remote to local
+## PUSH replicates from local to remote
+## default is PULL
+MODE="PULL"
+
+## set replication TYPE to LOCAL for local only replication
+## or REMOTE for remote replication
+## REMOTE - remote server replication (default)
+## LOCAL - local dataset replication
+TYPE="REMOTE"
+
 ## datasets to replicate - use zfs paths not mount points...
-## format is local_pool/local_fs:remote_pool
-## the local snap name will be used on the remote end
-REPLICATE_SETS="zpoolone/somefs:zpooltwo zpoolone/otherfs:zpooltwo"
+## format is localpool/localdataset:remotepool or
+## localpool/localdataset:remotepool/remotedataset
+## can include multiple strings separated by a "space"
+## PUSH will push the local to the remote
+## PULL will pull the local to the remote
+REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
 
-## allow replication of root datasets - if you specify root
-## datasets above and do not toggle this setting the
-## script will generate a warning and skip replicating
-## root datasets
+## option to recursively snapshot children of all datasets listed above
 ## 0 - disable (default)
-## 1 - enable (do so at your own risk)
-ALLOW_ROOT_DATASETS=0
-
-## option to recurrsively snapshot children of
-## all datasets listed above
-## 0 - disable (previous behavior)
 ## 1 - enable
 RECURSE_CHILDREN=0
 
+## if ANY replication task results in an error because of either
+##  - no common snapshot
+##  - snapshots detected on destination
+##  - failure to replicate incremental snapshot
+## this will start the replication from scratch if set to 1
+## and overwrite the existing data on the destination
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+ALLOW_REPLICATE_FROM_SCRATCH=0
+
+## Allow replication of root datasets
+## if you specify root datasets above and do not toggle this setting the
+## script will generate a warning and skip replicating root datasets
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+ALLOW_ROOT_DATASETS=0
+
 ## number of snapshots to keep of each dataset
-## snaps in excess of this number will be expired
-## oldest deleted first...must be 2 or greater
+## older snapshots will be deleted
 SNAP_KEEP=2
 
-## number of logs to keep in path ... logs will be
-## deleted in order of age with oldest going first
-LOG_KEEP=10
+## number of logs to keep
+## older logs will be deleted
+LOG_KEEP=5
 
-## where you want your log files
-## and gnu tar incremental snaphots
-LOGBASE=/root/logs
-
-## ip address or hostname of a remote server
-## this variable may be referenced in the
-## additional settings below
-##
-## this should not be used for local replication
-## and could be commented out and ignored
-REMOTE_SERVER='192.168.100.2'
+## log files directory (defaults to script path)
+SCRIPT=$(readlink -f "$0")
+SCRIPTPATH=$(dirname "${SCRIPT}")
+LOGBASE="${SCRIPTPATH}/logs"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
-##
-## this is not used for local replication
-## and could be commented out and ignored
+## comment out for local only replication
 REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 
-## pipe to your remote host...the pool/snap
-## DO NOT INCLUDE THE PIPE (|) CHARACTER
-## fs names from this host will be used on the remote
-##
-## for increased transfer speed you may want to specifically
-## enumerate your prefered cipher order in your ssh command:
-## ssh -c arcfour256,arcfour128,blowfish-cbc,aes128-ctr,aes192-ctr,aes256-ctr
-##
-## for local replication do not
-## call ssh or reference a remote server
-RECEIVE_PIPE="ssh ${REMOTE_SERVER} zfs receive -vFd"
+## path to zfs binary (only command for now)
+ZFS=zfs
 
-## path to zfs binary
-ZFS=/sbin/zfs
+## path to GNU find binary
+## solaris `find` does not support the -maxdepth option, which is required
+## on solaris 11, GNU find is typically located at /usr/bin/gfind
+FIND=/usr/bin/find
 
 ## get the current date info
 DOW=$(date "+%a")
@@ -98,7 +119,7 @@ CYR=$(date "+%Y")
 ## ie: pool0/someplace@autorep-${NAMETAG}
 NAMETAG="${MOY}${DOM}${CYR}_${NOW}"
 
-## the log file...you need to prepend with
+## the log file needs to start with
 ## autorep- in order for log cleanup to work
 ## using the default below is strongly suggested
 LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
@@ -106,7 +127,4 @@ LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
 
 Notes
 -----
-
-This script has been used by myself and others for well over a year, however as they say YMMV (your mileage may vary).
-
-If you use it, let me know, also please report issues via GitHub so this may be improved.
+If you use this script, let me know, also please report issues via GitHub so this may be improved.
