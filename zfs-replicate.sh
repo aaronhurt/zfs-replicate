@@ -363,37 +363,53 @@ do_snap() {
             printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                $ZFS snapshot ${local_set}@${sname}
+                if ! $ZFS snapshot ${local_set}@${sname}; then
+		exit_error
+  		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                $ZFS snapshot -r ${local_set}@${sname}
+                if ! $ZFS snapshot -r ${local_set}@${sname}; then
+		exit_error
+  		fi
             fi
         elif [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
             printf "Creating ZFS snapshot %s@%s\n" "${remote_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                ssh $REMOTE_SERVER $ZFS snapshot ${remote_set}@${sname}
+                if ! ssh $REMOTE_SERVER $ZFS snapshot ${remote_set}@${sname}; then
+		exit_error
+  		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                ssh $REMOTE_SERVER $ZFS snapshot -r ${remote_set}@${sname}
+                if ! ssh $REMOTE_SERVER $ZFS snapshot -r ${remote_set}@${sname}; then
+		exit_error
+  		fi
             fi
         elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
             printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                $ZFS snapshot ${local_set}@${sname}
+                if ! $ZFS snapshot ${local_set}@${sname}; then
+		exit_error
+  		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                $ZFS snapshot -r ${local_set}@${sname}
+                if ! $ZFS snapshot -r ${local_set}@${sname}; then
+		exit_error
+  		fi
             fi
         elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
             printf "Creating ZFS snapshot %s@%s\n" "${remote_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                ${ZFS} snapshot ${remote_set}@${sname}
+                if ! ${ZFS} snapshot ${remote_set}@${sname}; then
+		exit_error
+  		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                ${ZFS} snapshot -r ${remote_set}@${sname}
+                if ! ${ZFS} snapshot -r ${remote_set}@${sname}; then
+		exit_error
+  		fi
             fi
         fi
 
@@ -479,19 +495,23 @@ init() {
 	echo "Replication mode is not set. Please set the MODE variable to PUSH or PULL."
     	exit_error
     fi
+    if [ -z "${REPLICATE_SETS}" ] || [ "${REPLICATE_SETS}" == "localpool/localdataset:remotepool/remotedataset" ]; then
+    	echo "REPLICATE_SETS is not set properly. Please set it. See config.sample.sh file for examples."
+     	exit_error
+    fi
     if [ $SNAP_KEEP -lt 2 ]; then
         printf "ERROR: You must keep at least 2 snaps for incremental sending.\n"
         printf "Please check the setting of 'SNAP_KEEP' in the script.\n"
         exit_error
     fi
     ## check remote health
-    printf "Checking remote system...\n"
+    echo "Checking remote system..."
     check_remote
     ## do snapshots and send
-    printf "Creating snapshots...\n"
+    echo "Creating snapshots..."
     do_snap
     ## that's it...sending called from do_snap
-    printf "Finished all operations for...\n"
+    echo "Finished all operations for..."
     ## show a nice message and exit...
     exit_clean
 }
