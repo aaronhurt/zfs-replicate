@@ -24,7 +24,8 @@ TYPE="REMOTE"
 ## pools and dataset pairs must exist on the respective servers
 ## PUSH will push the local to the remote
 ## PULL will pull the local to the remote
-REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
+## REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
+REPLICATE_SETS=""
 
 ## option to recursively snapshot children of all datasets listed above
 ## 0 - disable (default)
