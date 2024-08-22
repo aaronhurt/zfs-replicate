@@ -479,6 +479,9 @@ init() {
 	echo "Replication mode is not set. Please set the MODE variable to PUSH or PULL."
     	exit_error
     fi
+    if [ -z ${REPLICATE_SETS} ] || [ ${REPLICATE_SETS} == "localpool/localdataset:remotepool/remotedataset" ]; then
+    	echo "REPLICATE_SETS is not set properly. Please set it. See config.sample.sh file for examples."
+    fi
     if [ $SNAP_KEEP -lt 2 ]; then
         printf "ERROR: You must keep at least 2 snaps for incremental sending.\n"
         printf "Please check the setting of 'SNAP_KEEP' in the script.\n"
