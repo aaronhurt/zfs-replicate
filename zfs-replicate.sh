@@ -496,7 +496,23 @@ init() {
     exit_clean
 }
 
-## attempt to load configuration
+## attempt to load configuration (return status on "status" command)
+if  [ ${1} == "status" ]; then
+	# Set log directory
+	LOGS="/var/log/zfs-replicate"
+	# Check for existing logs
+	if ! [ -e  ${LOGS} ]; then
+		echo "Log directory does not exist, can't check status."
+		exit 0
+	fi
+	# Retrieve latest log status
+	RECENT_LOG_FILE=$(ls ${LOGS} | grep autorep- | tail -n 1)
+	STATUS=$(tail -n 1 ${LOGS}/${RECENT_LOG_FILE})
+	echo "Last Replication Status"
+	echo "----------"
+	echo "${STATUS}"
+	echo "----------"
+	exit 0
 if [ "${1}x" != "x" ] && [ -f "${1}" ]; then
     ## source passed config
     printf "Sourcing configuration from %s\n" "${1}"
