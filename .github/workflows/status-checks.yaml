@@ -1,0 +1,40 @@
+name: status checks
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  shfmt:
+    name: runner / shfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: reviewdog/action-shfmt@v1
+        with:
+          level: info
+          filter_mode: nofilter
+          fail_on_error: true
+          shfmt_flags: '-ln bash -ci -sr -i 2'
+
+  shellcheck:
+    name: runner / shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        uses: reviewdog/action-shellcheck@v1
+        with:
+          level: info
+          reporter: github-check
+          filter_mode: nofilter
+          fail_on_error: true
+          exclude: |
+            "./.git/*"
+            "./config.sample.sh"
