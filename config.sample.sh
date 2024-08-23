@@ -57,9 +57,14 @@ SNAP_KEEP=2
 LOG_KEEP=5
 
 ## log files directory (defaults to script path)
-SCRIPT=$(readlink -f "$0")
-SCRIPTPATH=$(dirname "${SCRIPT}")
-LOGBASE="${SCRIPTPATH}/logs"
+## for XigmaNAS users, uncomment the next 3 lines
+## called SCRIPT SCRIPTPATH and LOGBASE
+## and comment out the last line to make sure the 
+## log files stay in the script directory
+#SCRIPT=$(readlink -f "$0")
+#SCRIPTPATH=$(dirname "${SCRIPT}")
+#LOGBASE="${SCRIPTPATH}/logs"
+LOGBASE="/var/log/zfs-replicate"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
