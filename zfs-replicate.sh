@@ -514,13 +514,13 @@ init() {
         exit_error
     fi
     ## check remote health
-    echo "Checking remote system..."
+    printf "Checking remote system...\n"
     check_remote
     ## do snapshots and send
-    echo "Creating snapshots..."
+    printf "Creating snapshots...\n"
     do_snap
     ## that's it...sending called from do_snap
-    echo "Finished all operations for..."
+    printf "Finished all operations for...\n"
     ## show a nice message and exit...
     exit_clean
 }
