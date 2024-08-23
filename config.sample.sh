@@ -57,9 +57,7 @@ SNAP_KEEP=2
 LOG_KEEP=5
 
 ## log files directory (defaults to script path)
-SCRIPT=$(readlink -f "$0")
-SCRIPTPATH=$(dirname "${SCRIPT}")
-LOGBASE="${SCRIPTPATH}/logs"
+LOGBASE="/var/log/zfs-replicate"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
