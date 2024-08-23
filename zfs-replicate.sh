@@ -363,53 +363,62 @@ do_snap() {
             printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                if ! $ZFS snapshot ${local_set}@${sname}; then
-		exit_error
+                $ZFS snapshot ${local_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
   		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                if ! $ZFS snapshot -r ${local_set}@${sname}; then
-		exit_error
-  		fi
+                $ZFS snapshot -r ${local_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             fi
         elif [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
             printf "Creating ZFS snapshot %s@%s\n" "${remote_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                if ! ssh $REMOTE_SERVER $ZFS snapshot ${remote_set}@${sname}; then
-		exit_error
-  		fi
+                ssh $REMOTE_SERVER $ZFS snapshot ${remote_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                if ! ssh $REMOTE_SERVER $ZFS snapshot -r ${remote_set}@${sname}; then
-		exit_error
-  		fi
+                ssh $REMOTE_SERVER $ZFS snapshot -r ${remote_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             fi
         elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
             printf "Creating ZFS snapshot %s@%s\n" "${local_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                if ! $ZFS snapshot ${local_set}@${sname}; then
-		exit_error
-  		fi
+                $ZFS snapshot ${local_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
-                if ! $ZFS snapshot -r ${local_set}@${sname}; then
-		exit_error
-  		fi
+                $ZFS snapshot -r ${local_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             fi
         elif [ ${MODE} = PULL ] && [ ${TYPE} = LOCAL ]; then
             printf "Creating ZFS snapshot %s@%s\n" "${remote_set}" "${sname}"
             if [ $RECURSE_CHILDREN -ne 1 ]; then
                 printf "RUNNING: %s snapshot %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                if ! ${ZFS} snapshot ${remote_set}@${sname}; then
-		exit_error
-  		fi
+                ${ZFS} snapshot ${remote_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${remote_set}" "${sname}"
-                if ! ${ZFS} snapshot -r ${remote_set}@${sname}; then
-		exit_error
-  		fi
+                ${ZFS} snapshot -r ${remote_set}@${sname}
+		if [[ $? -ne 0 ]]; then
+  		exit_error
+		fi
             fi
         fi
 
