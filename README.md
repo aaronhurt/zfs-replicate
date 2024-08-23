@@ -12,7 +12,7 @@ Features
 - Everything is logged to `${SCRIPTPATH}/logs` by default (can be set to custom location using $LOGBASE variable) but its better to keep it together with the scripts
 - Runs off a well documented `config.sh` file (see below)
 - Can be run on any schedule using cron with `bash zfs-replicate.sh -config.sh`
-- Includes a `get-last-status.sh` (for XigmaNAS) that can be used to email latest replication status, which will email the latest replication status at your preferred schedule. Simply add it as a custom script in the email settings under "System > Advanced > Email Reports" 
+- Includes a `status-report.sh` (for XigmaNAS) that can be used to email latest replication status, which will email the latest replication status at your preferred schedule. Simply add it as a custom script in the email settings under "System > Advanced > Email Reports" 
 - Includes ALLOW_REPLICATE_FROM_SCRATCH option (see below, or `config.sh` file for details)
 
 Warning
@@ -93,15 +93,10 @@ SNAP_KEEP=2
 ## older logs will be deleted
 LOG_KEEP=5
 
-## log files directory (defaults to /var/log/zfs-replicate)
-## for XigmaNAS users, uncomment the next 3 lines
-## called SCRIPT SCRIPTPATH and LOGBASE
-## and comment out the last line to make sure the 
-## log files stay in the script directory
-#SCRIPT=$(readlink -f "$0")
-#SCRIPTPATH=$(dirname "${SCRIPT}")
-#LOGBASE="${SCRIPTPATH}/logs"
-LOGBASE="/var/log/zfs-replicate"
+## log files directory (defaults to script path)
+SCRIPT=$(readlink -f "$0")
+SCRIPTPATH=$(dirname "${SCRIPT}")
+LOGBASE="${SCRIPTPATH}/logs"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
