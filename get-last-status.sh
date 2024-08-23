@@ -5,9 +5,9 @@ SCRIPT=$(readlink -f "$0")
 SCRIPTPATH=$(dirname "${SCRIPT}")
 
 # Check for existing logs
-if ! [ -e  ${SCRIPTPATH}/logs ]; then
-	echo "Log directory does not exist, can't check status."
-	exit 0
+if ! [ -e ${SCRIPTPATH}/logs ]; then
+  echo "Log directory does not exist, can't check status."
+  exit 0
 fi
 
 # Set log directory
