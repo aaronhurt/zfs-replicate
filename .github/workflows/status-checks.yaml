@@ -37,4 +37,3 @@ jobs:
           fail_on_error: true
           exclude: |
             "./.git/*"
-            "./config.sample.sh"

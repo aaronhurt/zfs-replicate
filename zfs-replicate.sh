@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 ## zfs-replicate.sh
+set -eo pipefail ## fail fast
 
 ############################################
 ##### warning gremlins live below here #####
 ############################################
+
+## define read-only constants
+readonly MODE_PUSH="PUSH"
+readonly MODE_PULL="PULL"
+readonly TYPE_REMOTE="REMOTE"
+readonly TYPE_LOCAL="LOCAL"
 
 ## check log count and delete old
 check_old_log() {
@@ -12,119 +19,111 @@ check_old_log() {
   ## initialize index
   local index=0
   ## find existing logs
-  for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
+  for log in $($FIND "$LOGBASE" -maxdepth 1 -type f -name autorep-\*); do
     ## get file change time via stat (platform specific)
+    local fstat
     case "$(uname -s)" in
       Linux | SunOS)
-        local fstat=$(stat -c %Z ${log})
+        fstat=$(stat -c %Z "$log")
         ;;
       *)
-        local fstat=$(stat -f %c ${log})
+        fstat=$(stat -f %c "$log")
         ;;
     esac
     ## append logs to array with creation time
-    logs[$index]="${fstat}\t${log}\n"
+    logs[index]="$fstat\t$log\n"
     ## increase index
-    let "index += 1"
+    (( index++ ))
   done
   ## set log count
   local lcount=${#logs[@]}
   ## check count ... if greater than keep loop and delete
-  if [ $lcount -gt ${LOG_KEEP} ]; then
+  if [[ "$lcount" -gt "${LOG_KEEP}" ]]; then
     ## build new array in descending age order and reset index
     declare -a slogs=()
     local index=0
     ## loop through existing array
-    for log in $(echo -e ${logs[@]:0} | sort -rn | cut -f2); do
+    for log in $(echo -e "${logs[@]:0}" | sort -rn | cut -f2); do
       ## append log to array
-      slogs[$index]=${log}
+      slogs[index]="$log"
       ## increase index
-      let "index += 1"
+      (( index++ ))
     done
     ## delete excess logs
     printf "deleting old logs: %s ...\n" "${slogs[@]:${LOG_KEEP}}"
-    rm -rf ${slogs[@]:${LOG_KEEP}}
+    rm -rf "${slogs[@]:${LOG_KEEP}}"
   fi
 }
 
-## exit 0 and delete old log files
+## exit and cleanup
 exit_clean() {
-  ## print errors
-  if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
-    printf "Last operation returned error code: %s\n" "${1}"
-  fi
-  ## check log files
-  check_old_log
-  clear_lock "${LOGBASE}"/.push.lock
-  clear_lock "${LOGBASE}"/.pull.lock
-  clear_lock "${LOGBASE}"/.snapshot.lock
-  ## always exit 0
-  printf "SUCCESS\n"
-  exit 0
-}
+  local exitCode=${1:-0}
+  local errorMsg=$2
+  local logMsg="SUCCESS: Operation completed"
 
-exit_error() {
-  ## print errors
-  if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
-    printf "Last operation returned error code: %s\n" "${1}"
+  ## build and print error message
+  if [[ $exitCode -ne 0 ]]; then
+    logMsg=$(printf "ERROR: Operation exited unexpectedly: code=%d" "$exitCode")
+    if [[ "$errorMsg" != "" ]]; then
+      logMsg=$(printf "%s msg=%s" "$logMsg" "$errorMsg")
+    fi
   fi
+
   ## check log files
   check_old_log
   clear_lock "${LOGBASE}"/.push.lock
   clear_lock "${LOGBASE}"/.pull.lock
   clear_lock "${LOGBASE}"/.snapshot.lock
-  printf "FAILED\n"
+
+  ## print log message and exit
+  printf "%s\n" "$logMsg"
   exit 0
 }
 
 ## lockfile creation and maintenance
 check_lock() {
+  local lockFile=$1
   ## check our lockfile status
-  if [ -f "${1}" ]; then
-    ## get lockfile contents
-    local lpid=$(cat "${1}")
+  if [ -f "$lockFile" ]; then
     ## see if this pid is still running
-    local ps=$(ps auxww | grep $lpid | grep -v grep)
-    if [ "${ps}x" != 'x' ]; then
+    local ps
+    if ps=$(pgrep -lx -F "$lockFile"); then
       ## looks like it's still running
-      printf "ERROR: This script is already running as: %s\n" "${ps}"
+      printf "ERROR: This script is already running as: %s\n" "$ps"
     else
       ## well the lockfile is there...stale?
-      printf "ERROR: Lockfile exists: %s\n" "${1}"
+      printf "ERROR: Lockfile exists: %s\n" "$lockFile"
       printf "However, the contents do not match any "
       printf "currently running process...stale lockfile?\n"
     fi
-    ## tell em what to do...
-    printf "To run script please delete: %s\n" "${1}"
-    ## compress log and exit...
-    exit_error
+    ## cleanup and exit
+    exit_clean 99 "To run script please delete: $lockFile"
   else
     ## well no lockfile..let's make a new one
-    printf "Creating lockfile: %s\n" "${1}"
-    echo $$ > "${1}"
+    printf "Creating lockfile: %s\n" "$lockFile"
+    echo $$ > "$lockFile"
   fi
 }
 
 ## delete lockfiles
 clear_lock() {
+  local lockFile=$1
   ## delete lockfiles...and that's all we do here
-  if [ -f "${1}" ]; then
-    printf "Deleting lockfile: %s\n" "${1}"
-    rm "${1}"
+  if [ -f "$lockFile" ]; then
+    printf "Deleting lockfile: %s\n" "$lockFile"
+    rm -f "$lockFile"
   fi
 }
 
 ## check remote system health
 check_remote() {
   ## do we have a remote check defined
-  if [ "${REMOTE_CHECK}x" != 'x' ]; then
-    ## run the check
-    $REMOTE_CHECK > /dev/null 2>&1
-    ## exit if above returned non-zero
-    if [ $? != 0 ]; then
-      printf "ERROR: Remote health check '%s' failed!\n" "${REMOTE_CHECK}"
-      exit_error
-    fi
+  if [ "${REMOTE_CHECK}" == "" ]; then
+    return
+  fi
+  ## run the check
+  if ! $REMOTE_CHECK > /dev/null 2>&1; then
+    exit_clean $? "Remote check '${REMOTE_CHECK}' failed!"
   fi
 }
 
@@ -134,8 +133,9 @@ do_push() {
   check_lock "${LOGBASE}/.push.lock"
   ## create initial push command based on arguments
   ## if first snapname is NULL we do not generate an inremental
-  if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
-    local dest_snap="$(ssh ${REMOTE_SERVER} $ZFS list -t snapshot -o name | grep ${remote_set} 2> /dev/null | grep autorep- 2> /dev/null | awk -F'@' '{print $2}' | tail -n 1)"
+  if [ "$MODE" == "${MODE_PUSH}" ] && [ "$TYPE" == "${TYPE_REMOTE}" ]; then
+    local dest_snap
+    dest_snap="$(ssh "${REMOTE_SERVER}" "$ZFS" list -t snapshot -o name | grep ${remote_set} 2> /dev/null | grep autorep- 2> /dev/null | awk -F'@' '{print $2}' | tail -n 1)"
   elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
     local dest_snap="$(${ZFS} list -t snapshot -o name | grep ${remote_set} 2> /dev/null | grep autorep- 2> /dev/null | awk -F'@' '{print $2}' | tail -n 1)"
   fi
@@ -168,19 +168,18 @@ do_push() {
         ${ZFS} list -o name -t snapshot | grep ${remote_set} | xargs -n1 ${ZFS} destroy
       fi
       if ! ${SEND_PIPE} ${sendargs} ${2} | ${RECEIVE_PIPE} ${receiveargs} ${3}; then
-        exit_error
+        exit_clean $?
       fi
     elif [ ${ALLOW_REPLICATE_FROM_SCRATCH} -ne 1 ]; then
-      echo "No common snapshots found, and replication from scratch IS NOT allowed."
-      exit_error
+      exit_clean 99 "No common snapshots found, and replication from scratch IS NOT allowed."
     fi
   fi
   ## get status
-  local push_status=$?
+  local status=$?
   ## clear lockfile
   clear_lock "${LOGBASE}/.push.lock"
   ## return status
-  return ${push_status}
+  return $status
 }
 
 # pull replication function
@@ -223,19 +222,18 @@ do_pull() {
         ${ZFS} list -o name -t snapshot | grep ${local_set} | xargs -n1 ${ZFS} destroy
       fi
       if ! ${SEND_PIPE} ${sendargs} ${2} | ${RECEIVE_PIPE} ${receiveargs} ${3}; then
-        exit_error
+        exit_clean $?
       fi
     elif [ ${ALLOW_REPLICATE_FROM_SCRATCH} -ne 1 ]; then
-      echo "No common snapshots found, and replication from scratch IS NOT allowed."
-      exit_error
+      exit_clean 99 "No common snapshots found, and replication from scratch IS NOT allowed."
     fi
   fi
   ## get status
-  local pull_status=$?
+  local status=$?
   ## clear lockfile
   clear_lock "${LOGBASE}/.pull.lock"
   ## return status
-  return ${pull_status}
+  return $status
 }
 
 ## small wrapper around zfs destroy
@@ -401,57 +399,93 @@ do_snap() {
     fi
 
     ## check return
-    if [ $? -ne 0 ]; then
-      ## oops...that's not right
-      exit_error $?
+    local status=$?
+    if [ $status -ne 0 ]; then
+      exit_clean $status
     fi
+
     ## Send incremental snaphot if count is 1 or more, otherwise send full snapshot
     if [ ${MODE} == PUSH ]; then
       if [ $scount -ge 1 ]; then
         if ! do_push ${base_snap} ${local_set}@${sname} ${remote_set}; then
           do_destroy ${local_set}@${sname}
-          exit_error
+          exit_clean 99 ## TODO: use proper status
         fi
       else
         if ! do_push "NULL" ${local_set}@${sname} ${remote_set}; then
           do_destroy ${local_set}@${sname}
-          exit_error
+          exit_clean 99 ## TODO: use proper status
         fi
       fi
     elif [ ${MODE} == PULL ]; then
       if [ $scount -ge 1 ]; then
         if ! do_pull ${base_snap} ${remote_set}@${sname} ${local_set}; then
           do_destroy ${remote_set}@${sname}
-          exit_error
+          exit_clean ## TODO: use proper status
         fi
       else
         if ! do_pull "NULL" ${remote_set}@${sname} ${local_set}; then
           do_destroy ${remote_set}@${sname}
-          exit_error
+          exit_clean ## TODO: use proper status
         fi
       fi
     fi
+
     ## check return of replication
     if [ $? != 0 ]; then
       if [ ${MODE} = PUSH ]; then
         printf "ERROR: Failed to send snapshot %s@$%s\n" "${local_set}" "${sname}"
         printf "Deleting the local snapshot %s@$%s\n" "${local_set}" "${sname}"
         do_destroy ${local_set}@${sname}
-        exit_error
+        exit_clean 99 ## TODO: use proper status
       elif [ ${MODE} = PULL ]; then
         printf "ERROR: Failed to send snapshot %s@$%s\n" "${remote_set}" "${sname}"
         printf "Deleting the local snapshot %s@$%s\n" "${remote_set}" "${sname}"
         do_destroy ${remote_set}@${sname}
-        exit_error
+        exit_clean 99 ## TODO: use proper status
       fi
     fi
   done
+
   ## clear our lockfile
   clear_lock "${LOGBASE}/.snapshot.lock"
 }
 
+## attempt to source configuration file
+load_config() {
+  local argv0=$0
+  local configFile=$1
+  ## attempt to load configuration
+  if [ "$configFile" != "x" ] && [ -f "$configFile" ]; then
+    ## source passed config
+    printf "Sourcing configuration from %s\n" "$configFile"
+    ## we can only determine this at runtime - disable check
+    # shellcheck disable=SC1090
+    . "$configFile"
+  elif [ -f "config.sh" ]; then
+    ## source default config
+    printf "Sourcing configuration from config.sh\n"
+    ## we can only determine this at runtime - disable check
+    # shellcheck disable=SC1091
+    . "config.sh"
+  elif [ -f "$(dirname "$argv0")/config.sh" ]; then
+    ## source script path config
+    printf "Sourcing configuration from %s/config.sh\n" "$(dirname "${0}")"
+    ## we can only determine this at runtime - disable check
+    # shellcheck disable=SC1091
+    . "$(dirname "$argv0")/config.sh"
+  else
+    ## display error and exit
+    printf "ERROR: Cannot continue without a valid configuration file!\n"
+    printf "Usage: %s <config>\n" "$argv0"
+    exit 1
+  fi
+  ## make sure our log dir exits
+  [ ! -d "${LOGBASE}" ] && mkdir -p "${LOGBASE}"
+}
+
 ## it all starts here...
-init() {
+main() {
   ## sanity check
   ## set pipes depending on MODE
   if [ ${MODE} = PUSH ]; then
@@ -475,17 +509,15 @@ init() {
       SEND_PIPE="zfs send"
       REMOTE_CHECK=""
     else
-      echo "Replication type is not set. Please set the TYPE variable to REMOTE or LOCAL."
-      exit_error
+      exit_clean 99 "Replication type is not set. Please set the TYPE variable to REMOTE or LOCAL."
     fi
   else
-    echo "Replication mode is not set. Please set the MODE variable to PUSH or PULL."
-    exit_error
+    exit_clean 99 "Replication mode is not set. Please set the MODE variable to PUSH or PULL."
   fi
   if [ $SNAP_KEEP -lt 2 ]; then
     printf "ERROR: You must keep at least 2 snaps for incremental sending.\n"
     printf "Please check the setting of 'SNAP_KEEP' in the script.\n"
-    exit_error
+    exit_clean 99
   fi
   ## check remote health
   printf "Checking remote system...\n"
@@ -495,33 +527,12 @@ init() {
   do_snap
   ## that's it...sending called from do_snap
   printf "Finished all operations for...\n"
-  ## show a nice message and exit...
+  ## show a message and exit
   exit_clean
 }
 
-## attempt to load configuration
-if [ "${1}x" != "x" ] && [ -f "${1}" ]; then
-  ## source passed config
-  printf "Sourcing configuration from %s\n" "${1}"
-  . "${1}"
-elif [ -f "config.sh" ]; then
-  ## source default config
-  printf "Sourcing configuration from config.sh\n"
-  . "config.sh"
-elif [ -f "$(dirname ${0})/config.sh" ]; then
-  ## source script path config
-  printf "Sourcing configuration from $(dirname ${0})/config.sh\n"
-  . "$(dirname ${0})/config.sh"
-else
-  ## display error
-  printf "ERROR: Cannot continue without a valid configuration file!\n"
-  printf "Usage: %s <config>\n" "${0}"
-  ## exit
-  exit 0
-fi
-
-## make sure our log dir exits
-[ ! -d "${LOGBASE}" ] && mkdir -p "${LOGBASE}"
+## load configuration
+load_config "$@"
 
 ## this is where it all starts
-init > "${LOGFILE}" 2>&1
+main > "${LOGFILE}" 2>&1

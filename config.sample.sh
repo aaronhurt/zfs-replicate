@@ -1,5 +1,7 @@
+#!/usr/bin/env bash
+## config.sample.sh
 ## zfs-replicate configuration file - edit as needed
-## config.sh
+# shellcheck disable=SC2034
 
 ## ip address or hostname of a remote server
 ## not used if TYPE is set to LOCAL
@@ -46,46 +48,48 @@ ALLOW_REPLICATE_FROM_SCRATCH=0
 ## script will generate a warning and skip replicating root datasets
 ## 0 - disable (default)
 ## 1 - enable (use at your own risk)
-ALLOW_ROOT_DATASETS=0
+readonly ALLOW_ROOT_DATASETS=0
 
 ## number of snapshots to keep for each dataset
 ## older snapshots will be deleted
-SNAP_KEEP=2
+readonly SNAP_KEEP=2
 
 ## number of logs to keep
 ## older logs will be deleted
-LOG_KEEP=5
+readonly LOG_KEEP=5
 
 ## log files directory (defaults to script path)
-SCRIPT=$(readlink -f "$0")
-SCRIPTPATH=$(dirname "${SCRIPT}")
-LOGBASE="${SCRIPTPATH}/logs"
+readonly SCRIPT=$(readlink -f "$0")
+readonly SCRIPTPATH=$(dirname "${SCRIPT}")
+readonly LOGBASE="${SCRIPTPATH}/logs"
 
 ## command to check health of remote host
 ## a return code of 0 will be considered OK
 ## not used if TYPE is set to LOCAL
-REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
+readonly REMOTE_CHECK="ping -c1 -q -W2 ${REMOTE_SERVER}"
 
-## path to zfs binary (only command for now)
-ZFS=zfs
+## path to zfs binary
+## the default will find the first `zfs` executable in $PATH
+readonly ZFS=$(which zfs)
 
 ## path to GNU find binary
 ## solaris `find` does not support the -maxdepth option, which is required
 ## on solaris 11, GNU find is typically located at /usr/bin/gfind
-FIND=/usr/bin/find
+## the default will return the first `find` executable in $PATH
+readonly FIND=$(which find)
 
 ## get the current date info
-DOW=$(date "+%a")
-MOY=$(date "+%m")
-DOM=$(date "+%d")
-NOW=$(date "+%s")
-CYR=$(date "+%Y")
+readonly DOW=$(date "+%a")
+readonly MOY=$(date "+%m")
+readonly DOM=$(date "+%d")
+readonly NOW=$(date "+%s")
+readonly CYR=$(date "+%Y")
 
 ## snapshot and log name tags
 ## ie: pool0/someplace@autorep-${NAMETAG}
-NAMETAG="${MOY}${DOM}${CYR}_${NOW}"
+readonly NAMETAG="${MOY}${DOM}${CYR}_${NOW}"
 
 ## the log file needs to start with
 ## autorep- in order for log cleanup to work
 ## using the default below is strongly suggested
-LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
+readonly LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"

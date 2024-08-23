@@ -1,23 +1,25 @@
-#!/bin/bash
+#!/usr/bin/env bash
+## get-last-status.sh
 
-# Set default script directory
-SCRIPT=$(readlink -f "$0")
-SCRIPTPATH=$(dirname "${SCRIPT}")
+print_status() {
+  ## Set local variables used below
+  local script scriptPath logPath find
+  script=$(readlink -f "$0")
+  scriptPath=$(dirname "${script}")
+  logPath="${scriptPath}/logs"
+  find=$(which find)
 
-# Check for existing logs
-if ! [ -e ${SCRIPTPATH}/logs ]; then
-  echo "Log directory does not exist, can't check status."
-  exit 0
-fi
+  ## Check for existing logs
+  if ! [ -e "${logPath}" ]; then
+    printf "Log directory does not exist, can't check status.\n"
+    exit 0
+  fi
 
-# Set log directory
-LOGS="${SCRIPTPATH}/logs"
+  ## Retrieve latest log status
+  local newestLog status
+  newestLog=$(${find} "${logPath}" -maxdepth 1 -type f -name autorep-\* | sort | tail -1)
+  status=$(tail -n 1 "${logPath}/${newestLog}")
 
-# Retrieve latest log status
-RECENT_LOG_FILE=$(ls ${LOGS} | grep autorep- | tail -n 1)
-STATUS=$(tail -n 1 ${LOGS}/${RECENT_LOG_FILE})
-
-echo "Last Replication Status"
-echo "----------"
-echo "${STATUS}"
-echo "----------"
+  ## Print status block
+  printf "Last Replication Status\n----------\n%s\n----------\n" "${status}"
+}
