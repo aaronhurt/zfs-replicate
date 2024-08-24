@@ -270,7 +270,6 @@ do_snap() {
         ## split dataset into local and remote parts and trim trailing slashes
         local local_set=$(echo $foo|cut -f1 -d:|sed 's/\/*$//')
         local remote_set=$(echo $foo|cut -f2 -d:|sed 's/\/*$//')
-    done
         ## check for root datasets
         if [ $ALLOW_ROOT_DATASETS -ne 1 ]; then
             if [ "${local_set}" == $(basename "${local_set}") ] && \
