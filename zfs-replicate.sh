@@ -30,13 +30,13 @@ check_old_log() {
     ## set log count
     local lcount="${#logs[@]}"
     ## check count ... if greater than keep loop and delete
-    if [ $lcount -gt ${LOG_KEEP} ]; then
+    if [ "${lcount}" -gt "${LOG_KEEP}" ]; then
         ## build new array in descending age order and reset index
         declare -a slogs=(); local index=0
         ## loop through existing array
         for log in $(echo -e "${logs[@]:0}" | sort -rn | cut -f2); do
             ## append log to array
-            slogs[$index]=${log}
+            slogs[$index]="${log}"
             ## increase index
             let "index += 1"
         done
