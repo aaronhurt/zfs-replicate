@@ -83,7 +83,7 @@ check_lock() {
         ## get lockfile contents
         local lpid=$(cat "${1}")
         ## see if this pid is still running
-        local ps=$(ps auxww|grep $lpid|grep -v grep)
+        local ps="$(ps auxww|grep $lpid|grep -v grep)"
         if [ "${ps}x" != 'x' ]; then
             ## looks like it's still running
             printf "ERROR: This script is already running as: %s\n" "${ps}"
