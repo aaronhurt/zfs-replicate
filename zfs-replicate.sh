@@ -23,9 +23,9 @@ check_old_log() {
             ;;
         esac
         ## append logs to array with creation time
-        logs[$index]="${fstat}\t${log}\n"
+        logs[index]="${fstat}\t${log}\n"
         ## increase index
-        let "index += 1"
+        (( index++ ))
     done
     ## set log count
     local lcount="${#logs[@]}"
