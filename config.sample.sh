@@ -1,3 +1,4 @@
+#!/bin/bash
 ## zfs-replicate configuration file - edit as needed
 ## config.sh
 
