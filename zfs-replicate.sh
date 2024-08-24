@@ -12,14 +12,14 @@ check_old_log() {
     ## initialize index
     local index=0
     ## find existing logs
-    for log in $(${FIND} ${LOGBASE} -maxdepth 1 -type f -name autorep-\*); do
+    for log in $("${FIND}" "${LOGBASE}" -maxdepth 1 -type f -name autorep-\*); do
         ## get file change time via stat (platform specific)
         case "$(uname -s)" in
             Linux|SunOS)
-                local fstat=$(stat -c %Z ${log})
+                local fstat=$(stat -c %Z "${log}")
             ;;
             *)
-                local fstat=$(stat -f %c ${log})
+                local fstat=$(stat -f %c "${log}")
             ;;
         esac
         ## append logs to array with creation time
@@ -28,13 +28,13 @@ check_old_log() {
         let "index += 1"
     done
     ## set log count
-    local lcount=${#logs[@]}
+    local lcount="${#logs[@]}"
     ## check count ... if greater than keep loop and delete
     if [ $lcount -gt ${LOG_KEEP} ]; then
         ## build new array in descending age order and reset index
         declare -a slogs=(); local index=0
         ## loop through existing array
-        for log in $(echo -e ${logs[@]:0} | sort -rn | cut -f2); do
+        for log in $(echo -e "${logs[@]:0}" | sort -rn | cut -f2); do
             ## append log to array
             slogs[$index]=${log}
             ## increase index
@@ -42,7 +42,7 @@ check_old_log() {
         done
         ## delete excess logs
         printf "deleting old logs: %s ...\n" "${slogs[@]:${LOG_KEEP}}"
-        rm -rf ${slogs[@]:${LOG_KEEP}}
+        rm -rf "${slogs[@]:${LOG_KEEP}}"
     fi
 }
 
