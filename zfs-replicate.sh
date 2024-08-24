@@ -427,7 +427,7 @@ do_snap() {
             ## oops...that's not right
             exit_error $?
         fi
-        ## Send incremental snaphot if count is 1 or more, otherwise send full snapshot
+        ## Send incremental snapshot if count is 1 or more, otherwise send full snapshot
         if [ ${MODE} == PUSH ]; then    
             if [ $scount -ge 1 ]; then
                 if ! do_push ${base_snap} ${local_set}@${sname} ${remote_set}; then
