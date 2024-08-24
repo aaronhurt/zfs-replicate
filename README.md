@@ -12,17 +12,15 @@ Features
 - Everything is logged to `${SCRIPTPATH}/logs` by default (can be set to custom location using $LOGBASE variable) but its better to keep it together with the scripts
 - Runs off a well documented `config.sh` file (see below)
 - Can be run on any schedule using cron with `bash zfs-replicate.sh -config.sh`
-- Includes a `get-last-status.sh` (for XigmaNAS) that can be used to email latest replication status, which will email the latest replication status at your preferred schedule. Simply add it as a custom script in the email settings under "System > Advanced > Email Reports" 
+- Includes a `get-last-status.sh` (for XigmaNAS) that can be used to email latest replication status, which will email the latest replication status at your preferred schedule. Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 - Includes ALLOW_REPLICATE_FROM_SCRATCH option (see below, or `config.sh` file for details)
 
 Warning
 -------
 
-Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create
-a true 1:1 copy of the source dataset in the destination dataset as currently configured.
+Replicating a root dataset to a remote will rewrite the remote pool with forced replication.  This script will create a true 1:1 copy of the source dataset in the destination dataset as currently configured.
 
-The configuration ```REPLICATE_SETS="zpoolone:zpooltwo"``` will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone```
-and may result in dataloss on ```zpooltwo```.
+The configuration ```REPLICATE_SETS="zpoolone:zpooltwo"``` will result in ```zpooltwo``` being a 1:1 copy of ```zpoolone``` and may result in dataloss on ```zpooltwo```.
 
 To replicate a root dataset safely to another pool consider this configuration: ```REPLICATE_SETS="zpoolone:zpooltwo/zpoolone"```
 
@@ -31,7 +29,7 @@ This will result in a 1:1 copy of ```zpoolone``` in a separate data set of ```zp
 To Use
 ------
 
-Configuration is done via a separate file that should be passed to the script on execution.  The script will attempt to locate a file called ```config.sh``` if one is not passed via the command line.
+Configuration is done via a separate file that should be passed to the script on execution. The script will attempt to locate a file called ```config.sh``` if one is not passed via the command line.
 
 The file is very well commented and the contents of the sample config are shown below.
 
@@ -135,4 +133,5 @@ LOGFILE="${LOGBASE}/autorep-${NAMETAG}.log"
 
 Notes
 -----
+
 If you use this script, let me know, also please report issues via GitHub so this may be improved.
