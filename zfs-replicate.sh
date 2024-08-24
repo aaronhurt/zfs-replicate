@@ -36,9 +36,9 @@ check_old_log() {
         ## loop through existing array
         for log in $(echo -e "${logs[@]:0}" | sort -rn | cut -f2); do
             ## append log to array
-            slogs[$index]="${log}"
+            slogs[index]="${log}"
             ## increase index
-            let "index += 1"
+            (( index++ ))
         done
         ## delete excess logs
         printf "deleting old logs: %s ...\n" "${slogs[@]:${LOG_KEEP}}"
@@ -49,7 +49,7 @@ check_old_log() {
 ## exit 0 and delete old log files
 exit_clean () {
     ## print errors
-    if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
+    if [ "${1}x" != "x" ] && [ "${1}" != 0 ]; then
         printf "Last operation returned error code: %s\n" "${1}"
     fi
     ## check log files
@@ -64,7 +64,7 @@ exit_clean () {
 
 exit_error () {
     ## print errors
-    if [ "${1}x" != "x" ] && [ ${1} != 0 ]; then
+    if [ "${1}x" != "x" ] && [ "${1}" != 0 ]; then
         printf "Last operation returned error code: %s\n" "${1}"
     fi
     ## check log files
