@@ -132,7 +132,7 @@ do_push() {
     ## check our push lockfile
     check_lock "${LOGBASE}/.push.lock"
     ## create initial push command based on arguments
-    ## if first snapname is NULL we do not generate an inremental
+    ## if first snapname is NULL we do not generate an incremental
     if [ ${MODE} = PUSH ] && [ ${TYPE} = REMOTE ]; then
 		local dest_snap="$(ssh ${REMOTE_SERVER} $ZFS list -t snapshot -o name | grep ${remote_set} 2>/dev/null | grep autorep- 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
     elif [ ${MODE} = PUSH ] && [ ${TYPE} = LOCAL ]; then
@@ -187,7 +187,7 @@ do_pull() {
     ## check our pull lockfile
     check_lock "${LOGBASE}/.pull.lock"
     ## create initial receive command based on arguments
-    ## if first snapname is NULL we do not generate an inremental
+    ## if first snapname is NULL we do not generate an incremental
     local dest_snap="$($ZFS list -t snapshot -o name | grep ${local_set} 2>/dev/null | grep autorep- 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
     if [ ${MODE} = PULL ] && [ ${TYPE} = REMOTE ]; then
 		local source_snap="$(ssh ${REMOTE_SERVER} $ZFS list -t snapshot -o name | grep ${dest_snap} 2>/dev/null | awk -F'@' '{print $2}' | tail -n 1)"
@@ -270,6 +270,7 @@ do_snap() {
         ## split dataset into local and remote parts and trim trailing slashes
         local local_set=$(echo $foo|cut -f1 -d:|sed 's/\/*$//')
         local remote_set=$(echo $foo|cut -f2 -d:|sed 's/\/*$//')
+    done
         ## check for root datasets
         if [ $ALLOW_ROOT_DATASETS -ne 1 ]; then
             if [ "${local_set}" == $(basename "${local_set}") ] && \
@@ -366,7 +367,6 @@ do_snap() {
                 $ZFS snapshot ${local_set}@${sname}
 		if [[ $? -ne 0 ]]; then
   		exit_error
-		fi
   		fi
             else
                 printf "RUNNING: %s snapshot -r %s@%s\n" "${ZFS}" "${local_set}" "${sname}"
