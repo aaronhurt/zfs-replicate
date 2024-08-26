@@ -85,7 +85,7 @@ clearLock() {
 ## exit and cleanup
 exitClean() {
   local exitCode=${1:=0} errorMsg=$2
-  local logMsg="SUCCESS: Operation completed normally."
+  local logMsg="SUCCESS: Operation completed."
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
     logMsg=$(printf "ERROR: Operation exited unexpectedly: code=%d" "$exitCode")
@@ -117,7 +117,7 @@ checkLock() {
       logitf "ERROR: Stale lockfile: %s\n" "$lockFile"
     fi
     ## cleanup and exit
-    exitClean 99 "To run script please delete: $lockFile"
+    exitClean 99 "to run script please delete: $lockFile"
   else
     ## well no lockfile..let's make a new one
     logitf "Creating lockfile: %s\n" "$lockFile"
@@ -144,8 +144,7 @@ checkHost() {
 ## small wrapper around zfs destroy
 snapDestroy() {
   local snap=$1
-  local name=$2
-  local host=$3
+  local host=$2
   local args
   local prefix
   if [[ -n "$host" ]]; then
@@ -184,7 +183,7 @@ snapSend() {
   ## execute send and check return
   # shellcheck disable=SC2086
   if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
-    snapDestroy "$src" "$name" "$srcHost"
+    snapDestroy "${src}@${name}" "$srcHost"
     logitf "ERROR: Failed to send snapshot %s@%s\n" "$src" "$snap"
     exitClean 99 "failed to replicate snapshot ${src}@${name}"
   fi
@@ -282,7 +281,7 @@ snapCreate() {
     logitf "Creating ZFS snapshot %s@%s\n" "$src" "$name"
     # shellcheck disable=SC2086
     if ! $prefix$ZFS snapshot $args$src@$name; then
-      exitClean 99 "failed to create snapshot ${src}@${name}"
+      exitClean 99 "failed to create snapshot: ${src}@${name}"
     fi
     ## send snapshot to destination
     snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
@@ -408,13 +407,13 @@ loadConfig() {
     mkdir -p "$LOG_BASE"
   fi
   if [[ -z "$REPLICATE_SETS" ]]; then
-    exitClean 99 "Missing required setting: REPLICATE_SETS"
+    exitClean 99 "missing required setting: REPLICATE_SETS"
   fi
   if [[ -z "$ZFS" ]]; then
-    exitClean 99 "Unable to locate system zfs binary"
+    exitClean 99 "unable to locate system zfs binary"
   fi
   if [[ $SNAP_KEEP -lt 2 ]]; then
-    exit_clean 99 "You must keep at least 2 snaps for incremental sending."
+    exit_clean 99 "you must keep at least 2 snaps for incremental sending."
   fi
   ## show status if toggled
   if [[ $status -eq 1 ]]; then
