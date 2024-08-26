@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - master
   pull_request:
 
 permissions:
@@ -53,7 +52,6 @@ jobs:
       - uses: reviewdog/action-shfmt@v1
         with:
           level: info
-          reporter: github-check
           filter_mode: nofilter
           fail_on_error: true
           shfmt_flags: '-ln bash -ci -sr -i 2'
