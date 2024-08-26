@@ -283,7 +283,9 @@ snapCreate() {
       exitClean 99 "failed to create snapshot ${src}@${name}"
     fi
     ## send snapshot to destination
-    snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
+    if ! snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"; then
+      exitClean 99 "failed to replicate snapshot ${src}@${name}"
+    fi
   done
   ## clear our lockfile
   clearLock "${TMPDIR}/.snapshot.lock"
