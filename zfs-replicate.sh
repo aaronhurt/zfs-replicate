@@ -144,7 +144,8 @@ checkHost() {
 ## small wrapper around zfs destroy
 snapDestroy() {
   local snap=$1
-  local host=$2
+  local name=$2
+  local host=$3
   local args
   local prefix
   if [[ -n "$host" ]]; then
