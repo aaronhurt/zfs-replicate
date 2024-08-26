@@ -6,18 +6,32 @@ set -e -o pipefail
 ##### warning gremlins live below here #####
 ############################################
 
+## handle logging to file or syslog
+writeLog() {
+  local line
+  read -r line
+  ## always echo the line to stdout
+  echo "$line"
+  ## if a log base and file has been configured append log
+  if [[ -n "$LOG_BASE" ]] && [[ -n "$LOG_FILE" ]]; then
+    printf "%s %s: %s\n" "$(date "+%b %d %T")" "$SCRIPT" "$line" >> "${LOG_BASE}/${LOG_FILE}"
+  fi
+  ## if syslog has been enabled write to syslog via logger
+  if [[ -n "$SYSLOG" ]] && [[ "$SYSLOG" -eq 1 ]] && [[ -n "$LOGGER" ]]; then
+    $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"
+  fi
+}
+
 ## logging helper function
 logit() {
-  ## TODO finish file and syslog logging
-  echo "zfs-replicate: $1"
+  echo "$1" | writeLog
 }
 
 ## logging helper function
 logitf() {
-  ## TODO finish file and syslog logging
   # shellcheck disable=SC2059
   # shellcheck disable=SC2145
-  printf "zfs-replicate: $@"
+  printf "$@" | writeLog
 }
 
 ## output log files in decreasing age order
@@ -40,7 +54,7 @@ sortLogs() {
         ;;
     esac
     ## append logs to array with creation time
-    logs+=("$fstat\t$log\n")
+    logs+=("${fstat}\t${log}\n")
   done
   ## output logs in descending age order
   for log in $(echo -e "${logs[@]:0}" | sort -rn | cut -f2); do
@@ -54,8 +68,8 @@ pruneLogs() {
   mapfile -t logs < <(sortLogs)
   ## check count and delete old logs
   if [[ "${#logs[@]}" -gt "$LOG_KEEP" ]]; then
-    logitf "deleting old logs: %s ...\n" "${logs[@]:$LOG_KEEP}"
-    rm -rf "${logs[@]:$LOG_KEEP}"
+    logitf "Deleting old logs: %s ...\n" "${logs[@]:${LOG_KEEP}}"
+    rm -rf "${logs[@]:${LOG_KEEP}}"
   fi
 }
 
@@ -79,10 +93,10 @@ exitClean() {
       logMsg=$(printf "%s msg=%s" "$logMsg" "$errorMsg")
     fi
   fi
-  ## check log files and clear locks
+  ## cleanup old logs and clear locks
   pruneLogs
-  clearLock "$TMPDIR"/.replicate.snapshot.lock
-  clearLock "$TMPDIR"/.replicate.send.lock
+  clearLock "${TMPDIR}"/.replicate.snapshot.lock
+  clearLock "${TMPDIR}"/.replicate.send.lock
   ## print log message and exit
   logit "$logMsg"
   exit 0
@@ -114,7 +128,7 @@ checkLock() {
 ## check remote host status
 checkHost() {
   ## do we have a host check defined
-  if [[ -z $HOST_CHECK ]]; then
+  if [[ -z "$HOST_CHECK" ]]; then
     return
   fi
   local host=$1 cmd
@@ -148,7 +162,7 @@ snapDestroy() {
 snapSend() {
   local base=$1 snap=$2 src=$3 srcHost=$4 dst=$5 dstHost=$6
   ## check our send lockfile
-  checkLock "$TMPDIR/.replicate.send.lock"
+  checkLock "${TMPDIR}/.replicate.send.lock"
   ## create initial send command based on arguments
   ## if first snap name is not empty generate an incremental
   local args="-R"
@@ -168,20 +182,20 @@ snapSend() {
   logitf "Sending snapshots %s@%s via %s to %s\n" "$src" "$snap" "$pipe" "$dst"
   ## execute send and check return
   # shellcheck disable=SC2086
-  if ! $prefix$ZFS send $args "$src@$snap" | $pipe "$dst"; then
+  if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
     snapDestroy "$src" "$name" "$srcHost"
     logitf "ERROR: Failed to send snapshot %s@%s\n" "$src" "$snap"
   fi
   ## clear lockfile
-  clearLock "$TMPDIR/.replicate.send.lock"
+  clearLock "${TMPDIR}/.replicate.send.lock"
 }
 
 ## create and manage source snapshots
 snapCreate() {
   ## make sure we aren't ever creating simultaneous snapshots
-  checkLock "$TMPDIR/.replicate.snapshot.lock"
+  checkLock "${TMPDIR}/.replicate.snapshot.lock"
   ## set our snap name
-  local name="autorep-$TAG"
+  local name="autorep-${TAG}"
   ## generate snapshot list and cleanup old snapshots
   for pair in $REPLICATE_SETS; do
     local src dst
@@ -222,16 +236,16 @@ snapCreate() {
       args="-d 1 "
     fi
     # shellcheck disable=SC2086
-    temps=$($prefix$ZFS list -Hr -o name -s creation -t snapshot $args$src | grep "$src\@autorep-" || true)
+    temps=$($prefix$ZFS list -Hr -o name -s creation -t snapshot $args$src | grep "${src}\@autorep-" || true)
     ## our snapshot array
     local snaps
     declare -a snaps=()
     for sn in $temps; do
       ## while we are here...check for our current snap name
-      if [[ "$sn" == "$src@$name" ]]; then
+      if [[ "$sn" == "${src}@${name}" ]]; then
         ## looks like it's here...we better kill it
         logitf "Destroying DUPLICATE snapshot %s@%s\n" "$src" "$name"
-        snapDestroy "$src@$name" "$srcHost"
+        snapDestroy "${src}@${name}" "$srcHost"
       else
         ## add this snapshot to the array
         snaps+=("$sn")
@@ -266,13 +280,13 @@ snapCreate() {
     logitf "Creating ZFS snapshot %s@%s\n" "$src" "$name"
     # shellcheck disable=SC2086
     if ! $prefix$ZFS snapshot $args$src@$name; then
-      exitClean 99 "failed to create snapshot $src@$name"
+      exitClean 99 "failed to create snapshot ${src}@${name}"
     fi
     ## send snapshot to destination
     snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
   done
   ## clear our lockfile
-  clearLock "$TMPDIR/.snapshot.lock"
+  clearLock "${TMPDIR}/.snapshot.lock"
 }
 
 ## perform macro substitution for tags
@@ -288,8 +302,64 @@ subTags() {
   echo "$m"
 }
 
+## dump latest log to stdout and exit
+showStatus() {
+  local logs
+  mapfile -t logs < <(sortLogs)
+  if [[ -n "${logs[0]}" ]]; then
+    printf "Last output from %s:\n%s\n" "$SCRIPT" "$(cat "${logs[0]}")"
+  else
+    printf "Unable to find most recent logfile, cannot print status."
+  fi
+  exit 0
+}
+
+## show usage and exit
+showHelp() {
+  printf "Usage: %s [options] [config]\n\n" "${BASH_SOURCE[0]}"
+  printf "Bash script to automate ZFS Replication\n\n"
+  printf "Options:\n"
+  printf "  -c, --config <configFile>    bash configuration file\n"
+  printf "  -s, --status                 print most recent log messages to stdout\n"
+  printf "  -h, --help                   show this message\n"
+  exit 0
+}
+
 loadConfig() {
-  local configFile=$1
+  ## read flags
+  local status=0 configFile opt OPTARG OPTIND
+  while getopts ":shc:-:" opt; do
+    if [[ "$opt" == "-" ]]; then
+      opt="${OPTARG%%=*}"                  # extract long option name
+      opt="${opt#"${opt%%[![:space:]]*}"}" # remove leading whitespace characters
+      opt="${opt%"${opt##*[![:space:]]}"}" # remove trailing whitespace characters
+      OPTARG="${OPTARG#"$opt"}"            # extract long option argument (may be empty)
+      OPTARG="${OPTARG#=}"                 # if long option argument, remove assigning `=`
+    fi
+    case "$opt" in
+      c | config)
+        configFile="${OPTARG}"
+        ;;
+      s | status)
+        status=1
+        ;;
+      h | help)
+        showHelp
+        ;;
+      \?) # bad short option
+        printf "%s: illegal option -%s\n" "${BASH_SOURCE[0]}" "$OPTARG" >&2
+        exit 2
+        ;;
+      *) # bad long option
+        printf "%s: illegal option --%s\n" "${BASH_SOURCE[0]}" "$opt" >&2
+        exit 2
+        ;;
+    esac
+  done
+  # remove parsed options and args from $@ list
+  shift $((OPTIND - 1))
+  ## allow config file to be passed as argument without a flag for backwards compat
+  [[ -z "$configFile" ]] && configFile=$1
   ## attempt to load configuration
   if [[ -f "$configFile" ]]; then
     logitf "Sourcing configuration from %s\n" "$configFile"
@@ -306,6 +376,8 @@ loadConfig() {
     ["DOW"]=$(date "+%a") ["DOM"]=$(date "+%d") ["MOY"]=$(date "+%m")
     ["CYR"]=$(date "+%Y") ["NOW"]=$(date "+%s")
   )
+  SCRIPT=$(basename "${BASH_SOURCE[0]}")
+  readonly SCRIPT
   readonly DATE_MACROS
   readonly TMPDIR=${TMPDIR:-"/tmp"}
   readonly REPLICATE_SETS ## no default value
@@ -343,26 +415,16 @@ loadConfig() {
   if [[ $SNAP_KEEP -lt 2 ]]; then
     exit_clean 99 "You must keep at least 2 snaps for incremental sending."
   fi
-}
-
-printStatus() {
-  ## Retrieve latest log status
-  local logs
-  mapfile -t logs < <(sortLogs)
-  if [[ -n "${logs[0]}" ]]; then
-    printf "Last output from zfs-replicate.sh:\n%s\n" "$(cat "${logs[0]}")"
-  else
-    echo "Unable to find most recent logfile, cannot print status."
+  ## show status if toggled
+  if [[ $status -eq 1 ]]; then
+    showStatus
   fi
-  exit 0
 }
 
 ## it all starts here...
 main() {
   ## load configuration
   loadConfig "$@"
-  ## check for status request - this is the only flag so it's a bit of a hack
-  [[ "$2" == "--status" ]] && printStatus
   ## do snapshots and send
   snapCreate
   ## that's it, sending is called from doSnap

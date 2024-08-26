@@ -1,10 +1,8 @@
-zfs-replicate
-=============
+# zfs-replicate
 
 A Bash script to automate ZFS Replication.
 
-Features
---------
+## Features
 
 - Supports push and pull replication with local and remote datasets
 - Supports multiple pool/dataset pairs to replicate
@@ -14,8 +12,7 @@ Features
 - Includes a `--status` option that can be used to email latest replication status at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 
-Warning
--------
+## Warning
 
 Replicating a root dataset to a remote will rewrite the remote pool with forced replication.
 This script will create a true 1:1 copy of the source dataset in the destination dataset as currently configured.
@@ -28,16 +25,31 @@ To replicate a root dataset safely to another pool consider `REPLICATE_SETS="zpo
 This will result in a 1:1 copy of `zpoolone` in a separate data set of `zpooltwo` and will not affect other datasets
 currently present on the destination.
 
-To Use
-------
+## To Use
 
-Configuration is done via a separate config, that should be passed as the first argument to the script on execution,
-or via environment variables. Most all options have sane defaults to keep configuration to a minimum.
-The script will attempt to locate a file called `config.sh` in the same directory as the script if one is not passed
-via the command line.
+Configuration is done via a separate config that may be passed as an option or as the last argument to the script.
+The config file is optional. All configuration may also be passed via environment variables. Most options have sane
+defaults to keep configuration to a minimum. The script will attempt to locate a file called `config.sh` in the same
+directory as the script if one is not passed via the command line.
 
-The file is very well commented and the contents of the sample config are shown below. The only required setting
-without a default is `REPLICATE_SETS`. The script will error out on launch if required configuration is not met.
+The config file is very well commented and the contents of the sample config are shown below. The only required
+setting without a default is `REPLICATE_SETS`. The script will error out on launch if required configuration
+is not met.
+
+### Available Command Line Options
+
+```shell
+Usage: ./zfs-replicate.sh [options] [config]
+
+Bash script to automate ZFS Replication
+
+Options:
+  -c, --config <configFile>    bash configuration file
+  -s, --status                 print most recent log messages to stdout
+  -h, --help                   show this message
+```
+
+### Config File and Environment Variable Reference
 
 ```bash
 #!/usr/bin/env bash
@@ -172,7 +184,20 @@ without a default is `REPLICATE_SETS`. The script will error out on launch if re
 #HOST_CHECK="ping -c1 -q -W2 %HOST%"
 ```
 
-Notes
------
+## Example Usage
+
+### With Config File
+
+```shell
+./zfs-replicate.sh config.sh
+```
+
+### With Environment Variables
+
+```shell
+LOG_BASE="./logs" SYSLOG=0 SSH="ssh -l root" REPLICATE_SETS="srcPool/srcFS:destPool/destFS@host" ./zfs-replicate.sh
+```
+
+## Notes
 
 If you use this script, let me know, also please report issues via GitHub so this may be improved.

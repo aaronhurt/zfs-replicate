@@ -5,3 +5,6 @@
 .Apple*
 .*~
 config.sh
+logs/*
+log/*
+*.log
