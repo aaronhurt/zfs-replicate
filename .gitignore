@@ -1,5 +1,7 @@
+.idea
+.vscode
+.vimrc
 .DS_*
 .Apple*
-.vimrc
 .*~
 config.sh
