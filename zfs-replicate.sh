@@ -395,7 +395,6 @@ loadConfig() {
   readonly LOG_KEEP=${LOG_KEEP:-5}
   readonly LOG_BASE ## no default value
   readonly HOST_CHECK=${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}
-  readonly FORCE_REPLICATE=${FORCE_REPLICATE:-0}
   readonly LOGGER=${LOGGER:-$(which logger)}
   readonly FIND=${FIND:-$(which find)}
   readonly ZFS=${ZFS:-$(which zfs)}

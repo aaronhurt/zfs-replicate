@@ -132,17 +132,6 @@ Options:
 ## directory and not a file.
 #LOG_BASE="/var/log/zfs-replicate"
 
-## Option to force ANY replication task that would fail for any of the
-## following conditions:
-##   - no common snapshot
-##   - snapshots detected on destination
-##   - failure to replicate incremental snapshot
-## Setting "FORCE_REPLICATE" to 1 will start the replication from scratch
-## and overwrite the existing data on the destination.
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-#FORCE_REPLICATE=0
-
 ## Path to the system "logger" executable.
 ## The default uses the first "logger" executable found in $PATH.
 #LOGGER=$(which logger)
