@@ -68,7 +68,7 @@ pruneLogs() {
   mapfile -t logs < <(sortLogs)
   ## check count and delete old logs
   if [[ "${#logs[@]}" -gt "$LOG_KEEP" ]]; then
-    logitf "Deleting old logs: %s ...\n" "${logs[@]:${LOG_KEEP}}"
+    logitf "Deleting OLD logs: %s\n" "${logs[@]:${LOG_KEEP}}"
     rm -rf "${logs[@]:${LOG_KEEP}}"
   fi
 }
@@ -117,7 +117,7 @@ checkLock() {
       logitf "ERROR: Stale lockfile: %s\n" "$lockFile"
     fi
     ## cleanup and exit
-    exitClean 99 "to run script please delete: $lockFile"
+    exitClean 99 "confirm script is not running and delete lockfile: $lockFile"
   else
     ## well no lockfile..let's make a new one
     logitf "Creating lockfile: %s\n" "$lockFile"
@@ -134,7 +134,7 @@ checkHost() {
   local host=$1 cmd
   ## substitute host
   cmd=${HOST_CHECK//%HOST%/$host}
-  logitf "Checking host %s via %s\n" "$host" "$cmd"
+  logitf "Checking host %s: %s\n" "$host" "$cmd"
   ## run the check
   if ! $cmd > /dev/null 2>&1; then
     exitClean 99 "host check '$cmd' failed!"
@@ -153,7 +153,7 @@ snapDestroy() {
   if [[ "$RECURSE_CHILDREN" -eq 1 ]]; then
     args="-r "
   fi
-  logitf "Deleting source snapshot %s\n" "$snap"
+  logitf "Deleting source snapshot: %s\n" "$snap"
   # shellcheck disable=SC2086
   $prefix$ZFS destroy $args"$snap"
 }
@@ -179,13 +179,12 @@ snapSend() {
   if [[ -n "$dstHost" ]]; then
     pipe=${DEST_PIPE_WITH_HOST//%HOST%/$dstHost}
   fi
-  logitf "Sending snapshots %s@%s via %s to %s\n" "$src" "$snap" "$pipe" "$dst"
+  logitf "Sending snapshot %s@%s via %s %s\n" "$src" "$snap" "$pipe" "$dst"
   ## execute send and check return
   # shellcheck disable=SC2086
   if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
     snapDestroy "${src}@${name}" "$srcHost"
-    logitf "ERROR: Failed to send snapshot %s@%s\n" "$src" "$snap"
-    exitClean 99 "failed to replicate snapshot ${src}@${name}"
+    exitClean 99 "failed to send snapshot: ${src}@${name}"
   fi
   ## clear lockfile
   clearLock "${TMPDIR}/.replicate.send.lock"
@@ -209,7 +208,7 @@ snapCreate() {
         [ "$dst" == "$(basename "$dst")" ]; then
         logitf "WARNING: Replicating root datasets can lead to data loss.\n"
         logitf "To allow root dataset replication and disable this warning "
-        logitf "set ALLOW_ROOT_DATASETS=1 in config or environment. Skipping: %s\n\n" "$pair"
+        logitf "set ALLOW_ROOT_DATASETS=1 in config or environment. Skipping: %s\n" "$pair"
         ## skip this set
         continue
       fi
@@ -245,7 +244,7 @@ snapCreate() {
       ## while we are here...check for our current snap name
       if [[ "$sn" == "${src}@${name}" ]]; then
         ## looks like it's here...we better kill it
-        logitf "Destroying DUPLICATE snapshot %s@%s\n" "$src" "$name"
+        logitf "Destroying DUPLICATE snapshot: %s@%s\n" "$src" "$name"
         snapDestroy "${src}@${name}" "$srcHost"
       else
         ## add this snapshot to the array
@@ -264,7 +263,7 @@ snapCreate() {
       ## cleanup old snapshots
       while [[ $count -ge $SNAP_KEEP ]]; do
         ## snaps are sorted above by creation in ascending order
-        logitf "Destroying OLD snapshot %s\n" "${snaps[index]}"
+        logitf "Destroying OLD snapshot: %s\n" "${snaps[index]}"
         snapDestroy "${snaps[index]}" "$srcHost"
         ## decrease count and increase index
         ((count--))
@@ -278,7 +277,7 @@ snapCreate() {
       args="-r "
     fi
     ## come on already...make that snapshot
-    logitf "Creating ZFS snapshot %s@%s\n" "$src" "$name"
+    logitf "Creating source snapshot: %s@%s\n" "$src" "$name"
     # shellcheck disable=SC2086
     if ! $prefix$ZFS snapshot $args$src@$name; then
       exitClean 99 "failed to create snapshot: ${src}@${name}"
@@ -363,11 +362,11 @@ loadConfig() {
   [[ -z "$configFile" ]] && configFile=$1
   ## attempt to load configuration
   if [[ -f "$configFile" ]]; then
-    logitf "Sourcing configuration from %s\n" "$configFile"
+    logitf "Sourcing config file: %s\n" "$configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   elif configFile="$(dirname "${BASH_SOURCE[0]}")/config.sh" && [[ -f "$configFile" ]]; then
-    logitf "Sourcing configuration from %s\n" "$configFile"
+    logitf "Sourcing config file: %s\n" "$configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   else
@@ -413,7 +412,7 @@ loadConfig() {
     exitClean 99 "unable to locate system zfs binary"
   fi
   if [[ $SNAP_KEEP -lt 2 ]]; then
-    exit_clean 99 "you must keep at least 2 snaps for incremental sending."
+    exit_clean 99 "a minimum of 2 snaps are required for incremental sending"
   fi
   ## show status if toggled
   if [[ $status -eq 1 ]]; then
