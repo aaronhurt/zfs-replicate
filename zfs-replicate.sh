@@ -185,6 +185,7 @@ snapSend() {
   if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
     snapDestroy "$src" "$name" "$srcHost"
     logitf "ERROR: Failed to send snapshot %s@%s\n" "$src" "$snap"
+    exitClean 99 "failed to replicate snapshot ${src}@${name}"
   fi
   ## clear lockfile
   clearLock "${TMPDIR}/.replicate.send.lock"
@@ -283,9 +284,7 @@ snapCreate() {
       exitClean 99 "failed to create snapshot ${src}@${name}"
     fi
     ## send snapshot to destination
-    if ! snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"; then
-      exitClean 99 "failed to replicate snapshot ${src}@${name}"
-    fi
+    snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
   done
   ## clear our lockfile
   clearLock "${TMPDIR}/.snapshot.lock"
