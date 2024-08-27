@@ -84,13 +84,13 @@ clearLock() {
 
 ## exit and cleanup
 exitClean() {
-  local exitCode=${1:=0} errorMsg=$2
+  local exitCode=${1:=0} extraMsg=$2
   local logMsg="SUCCESS: Operation completed."
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
     logMsg=$(printf "ERROR: Operation exited unexpectedly: code=%d" "$exitCode")
-    if [[ "$errorMsg" != "" ]]; then
-      logMsg=$(printf "%s msg=%s" "$logMsg" "$errorMsg")
+    if [[ "$extraMsg" != "" ]]; then
+      logMsg=$(printf "%s msg=%s" "$logMsg" "$extraMsg")
     fi
   fi
   ## cleanup old logs and clear locks
@@ -117,7 +117,7 @@ checkLock() {
       logitf "ERROR: Stale lockfile: %s\n" "$lockFile"
     fi
     ## cleanup and exit
-    exitClean 99 "confirm script is not running and delete lockfile: $lockFile"
+    exitClean 90 "confirm script is not running and delete lockfile: $lockFile"
   else
     ## well no lockfile..let's make a new one
     logitf "Creating lockfile: %s\n" "$lockFile"
@@ -137,7 +137,7 @@ checkHost() {
   logitf "Checking host %s: %s\n" "$host" "$cmd"
   ## run the check
   if ! $cmd > /dev/null 2>&1; then
-    exitClean 99 "host check '$cmd' failed!"
+    exitClean 90 "host check '$cmd' failed!"
   fi
 }
 
@@ -184,7 +184,7 @@ snapSend() {
   # shellcheck disable=SC2086
   if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
     snapDestroy "${src}@${name}" "$srcHost"
-    exitClean 99 "failed to send snapshot: ${src}@${name}"
+    exitClean 30 "failed to send snapshot: ${src}@${name}"
   fi
   ## clear lockfile
   clearLock "${TMPDIR}/.replicate.send.lock"
@@ -318,7 +318,7 @@ snapCreate() {
     logitf "Creating source snapshot: %s@%s\n" "$src" "$name"
     # shellcheck disable=SC2086
     if ! $prefix$ZFS snapshot $args$src@$name; then
-      exitClean 99 "failed to create snapshot: ${src}@${name}"
+      exitClean 20 "failed to create snapshot: ${src}@${name}"
     fi
     ## send snapshot to destination
     snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
@@ -363,6 +363,7 @@ showHelp() {
   exit 0
 }
 
+## load configuration defaults, parse flags, config, and environment
 loadConfig() {
   ## read flags
   local status=0 configFile opt OPTARG OPTIND
@@ -445,13 +446,13 @@ loadConfig() {
     mkdir -p "$LOG_BASE"
   fi
   if [[ -z "$REPLICATE_SETS" ]]; then
-    exitClean 99 "missing required setting: REPLICATE_SETS"
+    exitClean 10 "missing required setting: REPLICATE_SETS"
   fi
   if [[ -z "$ZFS" ]]; then
-    exitClean 99 "unable to locate system zfs binary"
+    exitClean 11 "unable to locate system zfs binary"
   fi
   if [[ $SNAP_KEEP -lt 2 ]]; then
-    exit_clean 99 "a minimum of 2 snaps are required for incremental sending"
+    exitClean 12 "a minimum of 2 snaps are required for incremental sending"
   fi
   ## show status if toggled
   if [[ $status -eq 1 ]]; then
