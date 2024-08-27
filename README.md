@@ -42,12 +42,12 @@ is not met.
 
 ## FreeBSD Package
 
-This script is available in the FreeBSD package and ports tree.
-https://www.freshports.org/sysutils/zfs-replicate/
+This script is available in the FreeBSD [package and ports tree](https://www.freshports.org/sysutils/zfs-replicate/).
 
-Special thanks to @tschettervictor for taking over maintenance of the package, suggesting new features, and testing
-for the v1.0 release. This script has been published to GitHub since 2012 and largely untouched since 2017. The v1.0
-release updates mark the first major changes to this script in over 7 years.
+Special thanks to [@tschettervictor](https://www.github.com/tschettervictor) for taking over maintenance of the
+package, suggesting new features, and testing for the v1.0 release.
+This script has been published to GitHub since 2012 and largely untouched since 2017. The v1.0 release updates mark
+the first major changes to this script in over 7 years.
 
 ### Available Command Line Options
 
