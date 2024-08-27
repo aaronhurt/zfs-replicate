@@ -84,14 +84,18 @@ clearLock() {
 
 ## exit and cleanup
 exitClean() {
-  local exitCode=${1:=0} extraMsg=$2
-  local logMsg="SUCCESS: Operation completed."
+  local exitCode=${1:-0} extraMsg=$2
+  local logMsg="SUCCESS: Operation completed"
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
     logMsg=$(printf "ERROR: Operation exited unexpectedly: code=%d" "$exitCode")
-    if [[ "$extraMsg" != "" ]]; then
+    if [[ -n "$extraMsg" ]]; then
       logMsg=$(printf "%s msg=%s" "$logMsg" "$extraMsg")
     fi
+  fi
+  ## append extra message if available
+  if [[ $exitCode -eq 0 ]] && [[ -n "$extraMsg" ]]; then
+    logMsg+=": $extraMsg"
   fi
   ## cleanup old logs and clear locks
   pruneLogs
