@@ -190,6 +190,29 @@ snapSend() {
   clearLock "${TMPDIR}/.replicate.send.lock"
 }
 
+## list replication snapshots
+snapList() {
+  local set=$1 host=$2 args prefix snaps snap
+  ## limit depth to 1 if not recursive
+  if [[ "$RECURSE_CHILDREN" -ne 1 ]]; then
+    args="-d 1 "
+  fi
+  ## set prefix based on host
+  if [[ -n "$host" ]]; then
+    prefix="$SSH $host "
+  fi
+  ## get snapshots from host that match our pattern
+  # shellcheck disable=SC2086
+  mapfile -t snaps < <($prefix$ZFS list -Hr -o name -s creation -t snapshot "$set")
+  ## filter snaps matching our pattern
+  local idx
+  for idx in "${!snaps[@]}"; do
+    if [[ ${snaps[idx]} == *@autorep-* ]]; then
+      echo "${snaps[idx]}"
+    fi
+  done
+}
+
 ## create and manage source snapshots
 snapCreate() {
   ## make sure we aren't ever creating simultaneous snapshots
@@ -197,11 +220,15 @@ snapCreate() {
   ## set our snap name
   local name="autorep-${TAG}"
   ## generate snapshot list and cleanup old snapshots
+  local pair
   for pair in $REPLICATE_SETS; do
-    local src dst
+    local src dst temps
     ## split dataset into source and destination parts and trim trailing slashes
-    src=$(echo "$pair" | cut -f1 -d: | sed 's/\/*$//')
-    dst=$(echo "$pair" | cut -f2 -d: | sed 's/\/*$//')
+    mapfile -d " " -t temps <<< "${pair//:/ }"
+    src="${temps[0]}"
+    src="${src%"${src##*[![:space:]]}"}"
+    dst="${temps[1]}"
+    dst="${dst%"${dst##*[![:space:]]}"}"
     ## check for root datasets
     if [[ "$ALLOW_ROOT_DATASETS" -ne 1 ]]; then
       if [ "$src" == "$(basename "$src")" ] ||
@@ -209,70 +236,81 @@ snapCreate() {
         logitf "WARNING: Replicating root datasets can lead to data loss.\n"
         logitf "To allow root dataset replication and disable this warning "
         logitf "set ALLOW_ROOT_DATASETS=1 in config or environment. Skipping: %s\n" "$pair"
-        ## skip this set
         continue
       fi
     fi
     ## look for host options on source and destination
-    local srcHost dstHost
+    local srcHost dstHost temps
     if [[ "$src" == *@* ]]; then
-      srcHost=$(echo "$src" | cut -f2 -d@)
+      ## split and trim trailing spaces
+      mapfile -d " " -t temps <<< "${src//@/ }"
+      src="${temps[0]}"
+      src="${src%"${src##*[![:space:]]}"}"
+      srcHost="${temps[1]}"
+      srcHost="${srcHost%"${srcHost##*[![:space:]]}"}"
       checkHost "$srcHost" ## we only check the host once per set
-      src=$(echo "$src" | cut -f1 -d@)
     fi
     if [[ "$dst" == *@* ]]; then
-      dstHost=$(echo "$dst" | cut -f2 -d@)
+      ## split and trim trailing spaces
+      mapfile -d " " -t temps <<< "${dst//@/ }"
+      dst="${temps[0]}"
+      dst="${dst%"${dst##*[![:space:]]}"}"
+      dstHost="${temps[1]}"
+      dstHost="${dstHost%"${dstHost##*[![:space:]]}"}"
       checkHost "$dstHost" ## we only check the host once per set
-      dst=$(echo "$dst" | cut -f1 -d@)
     fi
+    ## get source and destination snapshots
+    local srcSnaps dstSnaps snap
+    mapfile -t srcSnaps < <(snapList "$src" "$srcHost")
+    mapfile -t dstSnaps < <(snapList "$dst" "$dstHost")
+    for snap in "${srcSnaps[@]}"; do
+      ## while we are here...check for our current snap name
+      if [[ "$snap" == "${src}@${name}" ]]; then
+        ## looks like it's here...we better kill it
+        logitf "Destroying DUPLICATE snapshot: %s@%s\n" "$src" "$name"
+        snapDestroy "${src}@${name}" "$srcHost"
+      fi
+    done
+    ## set our base snap for incremental generation if both src contains a sufficient
+    ## number of snapshots and the base source snapshot exists in destination data set.
+    local base
+    if [[ ${#srcSnaps[@]} -ge 1 ]]; then
+      local sn dn ss
+      ss="${srcSnaps[-1]}"
+      mapfile -d " " -t temps <<< "${ss//@/ }"
+      sn="${temps[1]}"
+      sn="${sn%"${sn##*[![:space:]]}"}"
+      for snap in "${dstSnaps[@]}"; do
+        mapfile -d " " -t temps <<< "${snap//@/ }"
+        dn="${temps[1]}"
+        dn="${dn%"${dn##*[![:space:]]}"}"
+        if [[ "$dn" == "$sn" ]]; then
+          base="$ss"
+        fi
+      done
+      ## no matching base, are we allowed to fallback?
+      if [[ -z "$base" ]] && [[ $FALLBACK -ne 1 ]]; then
+        logitf "WARNING: Failed to find matching snapshot in destination. Skipping: %s\n" "$pair"
+        continue
+      fi
+    fi
+    ## cleanup old snapshots
+    local idx
+    for idx in "${!srcSnaps[@]}"; do
+      if [[ ${#srcSnaps[@]} -ge $SNAP_KEEP ]]; then
+        ## snaps are sorted above by creation in ascending order
+        logitf "Found OLD snapshot: %s\n" "${srcSnaps[idx]}"
+        snapDestroy "${srcSnaps[idx]}" "$srcHost"
+        unset 'srcSnaps[idx]'
+      fi
+    done
     ## set the command prefix based on source host
     local prefix
     if [[ -n "$srcHost" ]]; then
       prefix="$SSH $srcHost "
     fi
-    ## get existing source snapshots that look like they were made by this script
-    local args temps
-    if [[ "$RECURSE_CHILDREN" -ne 1 ]]; then
-      args="-d 1 "
-    fi
-    # shellcheck disable=SC2086
-    temps=$($prefix$ZFS list -Hr -o name -s creation -t snapshot $args$src | grep "${src}\@autorep-" || true)
-    ## our snapshot array
-    local snaps
-    declare -a snaps=()
-    for sn in $temps; do
-      ## while we are here...check for our current snap name
-      if [[ "$sn" == "${src}@${name}" ]]; then
-        ## looks like it's here...we better kill it
-        logitf "Destroying DUPLICATE snapshot: %s@%s\n" "$src" "$name"
-        snapDestroy "${src}@${name}" "$srcHost"
-      else
-        ## add this snapshot to the array
-        snaps+=("$sn")
-      fi
-    done
-    ## init counting index and get snap count
-    local index=0 count=${#snaps[@]}
-    ## set our base snap for incremental generation below
-    local base
-    if [[ $count -ge 1 ]]; then
-      base=${snaps[$count - 1]}
-    fi
-    ## how many snapshots did we end up with..
-    if [[ $count -ge $SNAP_KEEP ]]; then
-      ## cleanup old snapshots
-      while [[ $count -ge $SNAP_KEEP ]]; do
-        ## snaps are sorted above by creation in ascending order
-        logitf "Destroying OLD snapshot: %s\n" "${snaps[index]}"
-        snapDestroy "${snaps[index]}" "$srcHost"
-        ## decrease count and increase index
-        ((count--))
-        ((index++)) || true
-      done
-
-    fi
     ## check if we are supposed to be recursive
-    local args="" ## reset args
+    local args
     if [[ $RECURSE_CHILDREN -eq 1 ]]; then
       args="-r "
     fi
@@ -394,13 +432,14 @@ loadConfig() {
   readonly LOG_FILE
   readonly LOG_KEEP=${LOG_KEEP:-5}
   readonly LOG_BASE ## no default value
-  readonly HOST_CHECK=${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}
   readonly LOGGER=${LOGGER:-$(which logger)}
   readonly FIND=${FIND:-$(which find)}
   readonly ZFS=${ZFS:-$(which zfs)}
   readonly SSH=${SSH:-$(which ssh)}
   readonly DEST_PIPE_WITH_HOST=${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}
   readonly DEST_PIPE_WITHOUT_HOST=${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}
+  readonly HOST_CHECK=${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}
+  readonly FALLBACK=${FALLBACK:-0}
   ## check configuration
   if [[ -n "$LOG_BASE" ]] && [[ ! -d "$LOG_BASE" ]]; then
     mkdir -p "$LOG_BASE"

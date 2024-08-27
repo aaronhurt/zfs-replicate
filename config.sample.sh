@@ -117,3 +117,13 @@
 ## the "@host" target in the replicate set.
 ## The default command is "ping -c1 -q -W2 %HOST%".
 #HOST_CHECK="ping -c1 -q -W2 %HOST%"
+
+## Fallback to full send when source and destination have drifted. It is
+## expected that the destination dataset is a 1:1 copy of the source.
+## Normally, modification of the remote data set by removing snapshots shared
+## with the source would result in a failure. Setting this option to "1" will
+## cause the script to fallback to a full send of all source snapshots to
+## the destination dataset.
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+#FALLBACK=0
