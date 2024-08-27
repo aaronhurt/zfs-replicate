@@ -9,7 +9,7 @@ set -e -o pipefail
 ## handle logging to file or syslog
 writeLog() {
   local line
-  read -r line
+  read -r line || true ## never fail on read
   ## always echo the line to stdout
   echo "$line"
   ## if a log base and file has been configured append log
@@ -241,9 +241,8 @@ snapCreate() {
     if [[ "$ALLOW_ROOT_DATASETS" -ne 1 ]]; then
       if [ "$src" == "$(basename "$src")" ] ||
         [ "$dst" == "$(basename "$dst")" ]; then
-        logitf "WARNING: Replicating root datasets can lead to data loss.\n"
-        logitf "To allow root dataset replication and disable this warning "
-        logitf "set ALLOW_ROOT_DATASETS=1 in config or environment. Skipping: %s\n" "$pair"
+        logit "WARNING: Replicating root datasets can lead to data loss."
+        logitf "Set 'ALLOW_ROOT_DATASETS=1' in config or environment to disable warning. Skipping: %s\n" "$pair"
         ((__SKIP_COUNT++)) || true
         continue
       fi
@@ -301,7 +300,7 @@ snapCreate() {
       done
       ## no matching base, are we allowed to fallback?
       if [[ -z "$base" ]] && [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
-        logit "WARNING: Unable to find base snapshot '%s' in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
+        logitf "WARNING: Unable to find base snapshot '%s' in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
         logitf "Set 'ALLOW_RECONCILIATION=1' to fallback to a full send. Skipping: %s\n" "$pair"
         ((__SKIP_COUNT++)) || true
         continue
@@ -311,7 +310,7 @@ snapCreate() {
     if [[ -z "$base" ]] && [[ ${#dstSnaps[@]} -gt 0 ]]; then
       ## allowed to prune remote dataset?
       if [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
-        logitf "WARNING: Destination contains snapshots not in source."
+        logit "WARNING: Destination contains snapshots not in source."
         logitf "Set 'ALLOW_RECONCILIATION=1' to remove destination snapshots. Skipping: %s\n" "$pair"
         ((__SKIP_COUNT++)) || true
         continue
@@ -437,7 +436,7 @@ loadConfig() {
     # shellcheck disable=SC1090
     source "$configFile"
   else
-    logitf "Loading configuration from defaults and environmental settings.\n"
+    logit "Loading configuration from defaults and environmental settings."
   fi
   declare -A DATE_MACROS=(
     ["DOW"]=$(date "+%a") ["DOM"]=$(date "+%d") ["MOY"]=$(date "+%m")
