@@ -3,7 +3,12 @@
 # shellcheck disable=SC2034
 
 ## Datasets to replicate. These must be zfs paths not mount points.
-## The format general format is "source:destination".
+## The format general format is "source:destination". The source is always
+## considered authoritative. This holds true for reconciliation attempts with
+## the "FORCE_FALLBACK" and "FORCE_PRUNE" options describe below as well.
+## This script will NEVER modify the source as a means to prevent a failure.
+## The "FORCE_FALLBACK" and "FORCE_PRUNE" options only affect the destination.
+##
 ## Examples replicating a local source to a remote destination (PUSH):
 ##   - sourcePool/sourceDataset:destinationPool@host
 ##   - sourcePool/sourceDataset:destinationPool/destinationDataset@host
@@ -16,7 +21,7 @@
 ## Multiple space separated sets may be specified.
 ## Pools and dataset pairs must exist on the respective servers.
 ##
-#REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
+#REPLICATE_SETS=""
 
 ## Allow replication of root datasets.
 ## If "REPLICATE_SETS" contains root datasets and "ALLOW_ROOT_DATASETS" is
@@ -26,6 +31,34 @@
 ## 1 - enable (use at your own risk)
 ##
 #ALLOW_ROOT_DATASETS=0
+
+## Fallback to full send when source and destination have drifted. It is
+## expected that the destination dataset is a 1:1 copy of the source.
+## Modification of the destination data set by removing snapshots
+## shared with the source often results in failure. Setting this option
+## to "1" will cause the script to fallback to a full send of all source
+## snapshots to the destination dataset. When combined with the "-F" option
+## in the destination receive pipe, this option will force a reconciliation.
+## This option will NEVER alter the source. The source is always authoritative.
+##
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+##
+#FORCE_FALLBACK=0
+
+## Prune destination snapshots when a drift is detected. Similar to
+## the "FORCE_FALLBACK" option above, it is expected that source and destination
+## datasets are 1:1 copies after the first run of the script. Manually
+## altering source or destination snapshots will normally result in failures.
+## Setting this option to "1" will cause the script to remove snapshots that
+## appear to have been created by this script from the destination if they do
+## not exist on the source dataset. This option will NEVER alter the source.
+## The source is always authoritative.
+##
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+##
+#FORCE_PRUNE=0
 
 ## Option to recursively snapshot children of datasets contained
 ## in the replication set.
@@ -138,29 +171,3 @@
 ## The default command is "ping -c1 -q -W2 %HOST%".
 ##
 #HOST_CHECK="ping -c1 -q -W2 %HOST%"
-
-## Fallback to full send when source and destination have drifted. It is
-## expected that the destination dataset is a 1:1 copy of the source.
-## Modification of the destination data set by removing snapshots
-## shared with the source often results in failure. Setting this option
-## to "1" will cause the script to fallback to a full send of all source
-## snapshots to the destination dataset. When combined with the "-F" option
-## in the destination receive pipe, this option will force a reconciliation.
-##
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-##
-#FORCE_FALLBACK=0
-
-## Prune destination snapshots when a drift is detected. Similar to
-## the "FORCE_FALLBACK" option above, it is expected that source and destination
-## datasets are 1:1 copies after the first run of the script. Manually
-## altering source or destination snapshots will normally result in failures.
-## Setting this option to "1" will cause the script to remove snapshots that
-## appear to have been created by this script from the destination if they do
-## not exist on the source dataset.
-##
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-##
-#FORCE_PRUNE=0

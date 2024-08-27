@@ -4,25 +4,26 @@ A Bash script to automate ZFS Replication.
 
 ## Features
 
+- The source pool and dataset are always authoritative
 - Supports push and pull replication with local and remote datasets
 - Supports multiple pool/dataset pairs to replicate
-- Everything is logged to syslog by default, and local logging can be configured if desired
+- Logging leverages syslog (via logger) by default, but local logging can be configured if desired
 - Runs off a well documented `config.sh` file and/or environment variables passed to the script
-- Can be run on any schedule using cron
-- Includes a `--status` option that can be used to email latest replication status at your preferred schedule.
+- Can be run on any schedule using cron or similar mechanism
+- Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 
 ## Warning
 
 Replicating a root dataset to a remote will rewrite the remote pool with forced replication.
-This script will create a true 1:1 copy of the source dataset in the destination dataset as currently configured.
+This script will create a true 1:1 copy of the source dataset in the destination dataset with default options.
 
-The configuration `REPLICATE_SETS="zpoolone:zpooltwo"` will result in `zpooltwo` being a 1:1 copy of `zpoolone` and may
-result in data loss on `zpooltwo`.
+The configuration `REPLICATE_SETS="zpoolOne:zpoolTwo"` will result in `zpoolTwo` being a 1:1 copy of `zpoolOne` and may
+result in data loss on `zpoolTwo`.
 
-To replicate a root dataset safely to another pool consider `REPLICATE_SETS="zpoolone:zpooltwo/zpoolone"` instead.
+To replicate a root dataset safely to another pool consider `REPLICATE_SETS="zpoolOne:zpoolTwo/zpoolOne"` instead.
 
-This will result in a 1:1 copy of `zpoolone` in a separate data set of `zpooltwo` and will not affect other datasets
+This will result in a 1:1 copy of `zpoolOne` in a separate data set of `zpoolTwo` and will not affect other datasets
 currently present on the destination.
 
 ## To Use
@@ -33,7 +34,7 @@ defaults to keep configuration to a minimum. The script will attempt to locate a
 directory as the script if one is not passed via the command line.
 
 The config file is very well commented and the contents of the sample config are shown below. The only required
-setting without a default is `REPLICATE_SETS`. The script will error out on launch if required configuration
+setting without a default is the `REPLICATE_SETS` option. The script will error out on launch if required configuration
 is not met.
 
 ### Available Command Line Options
@@ -57,7 +58,12 @@ Options:
 # shellcheck disable=SC2034
 
 ## Datasets to replicate. These must be zfs paths not mount points.
-## The format general format is "source:destination".
+## The format general format is "source:destination". The source is always
+## considered authoritative. This holds true for reconciliation attempts with
+## the "FORCE_FALLBACK" and "FORCE_PRUNE" options describe below as well.
+## This script will NEVER modify the source as a means to prevent a failure.
+## The "FORCE_FALLBACK" and "FORCE_PRUNE" options only affect the destination.
+##
 ## Examples replicating a local source to a remote destination (PUSH):
 ##   - sourcePool/sourceDataset:destinationPool@host
 ##   - sourcePool/sourceDataset:destinationPool/destinationDataset@host
@@ -70,7 +76,7 @@ Options:
 ## Multiple space separated sets may be specified.
 ## Pools and dataset pairs must exist on the respective servers.
 ##
-#REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
+#REPLICATE_SETS=""
 
 ## Allow replication of root datasets.
 ## If "REPLICATE_SETS" contains root datasets and "ALLOW_ROOT_DATASETS" is
@@ -80,6 +86,34 @@ Options:
 ## 1 - enable (use at your own risk)
 ##
 #ALLOW_ROOT_DATASETS=0
+
+## Fallback to full send when source and destination have drifted. It is
+## expected that the destination dataset is a 1:1 copy of the source.
+## Modification of the destination data set by removing snapshots
+## shared with the source often results in failure. Setting this option
+## to "1" will cause the script to fallback to a full send of all source
+## snapshots to the destination dataset. When combined with the "-F" option
+## in the destination receive pipe, this option will force a reconciliation.
+## This option will NEVER alter the source. The source is always authoritative.
+##
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+##
+#FORCE_FALLBACK=0
+
+## Prune destination snapshots when a drift is detected. Similar to
+## the "FORCE_FALLBACK" option above, it is expected that source and destination
+## datasets are 1:1 copies after the first run of the script. Manually
+## altering source or destination snapshots will normally result in failures.
+## Setting this option to "1" will cause the script to remove snapshots that
+## appear to have been created by this script from the destination if they do
+## not exist on the source dataset. This option will NEVER alter the source.
+## The source is always authoritative.
+##
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+##
+#FORCE_PRUNE=0
 
 ## Option to recursively snapshot children of datasets contained
 ## in the replication set.
@@ -192,40 +226,6 @@ Options:
 ## The default command is "ping -c1 -q -W2 %HOST%".
 ##
 #HOST_CHECK="ping -c1 -q -W2 %HOST%"
-
-## Fallback to full send when source and destination have drifted. It is
-## expected that the destination dataset is a 1:1 copy of the source.
-## Modification of the destination data set by removing snapshots
-## shared with the source often results in failure. Setting this option
-## to "1" will cause the script to fallback to a full send of all source
-## snapshots to the destination dataset. When combined with the "-F" option
-## in the destination receive pipe, this option will force a reconciliation.
-##
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-##
-#FORCE_FALLBACK=0
-
-## Prune destination snapshots when a drift is detected. Similar to
-## the "FORCE_FALLBACK" option above, it is expected that source and destination
-## datasets are 1:1 copies after the first run of the script. Manually
-## altering source or destination snapshots will normally result in failures.
-## Setting this option to "1" will cause the script to remove snapshots that
-## appear to have been created by this script from the destination if they do
-## not exist on the source dataset.
-##
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-##
-#FORCE_PRUNE=0
-```
-
-## Example Usage
-
-### With Config File
-
-```shell
-./zfs-replicate.sh config.sh
 ```
 
 ### With Environment Variables
