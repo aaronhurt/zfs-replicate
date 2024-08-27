@@ -62,7 +62,7 @@ sortLogs() {
   done
 }
 
-## check log count and delete old
+## check log count and delete old logs
 pruneLogs() {
   local logs
   mapfile -t logs < <(sortLogs)
@@ -84,10 +84,16 @@ clearLock() {
 
 ## exit and cleanup
 exitClean() {
-  local exitCode=${1:-0} extraMsg=$2 logMsg="SUCCESS: Operation completed"
+  local exitCode=${1:-0} extraMsg=$2 logMsg status="SUCCESS"
+  ## set status to warning if we skipped any datasets
+  if [[ $__SKIP_COUNT -gt 0 ]]; then
+    status="WARNING"
+  fi
+  logMsg=$(printf "%s: Total datasets: %d Skipped: %d" "$status" "$__PAIR_COUNT" "$__SKIP_COUNT")
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
-    logMsg=$(printf "ERROR: Operation exited unexpectedly: code=%d" "$exitCode")
+    status="ERROR"
+    logMsg=$(printf "%s: Operation exited unexpectedly: code=%d" "$status" "$exitCode")
     if [[ -n "$extraMsg" ]]; then
       logMsg=$(printf "%s msg=%s" "$logMsg" "$extraMsg")
     fi
@@ -221,8 +227,10 @@ snapCreate() {
   local name="autorep-${TAG}"
   ## generate snapshot list and cleanup old snapshots
   local pair
+  __PAIR_COUNT=0 __SKIP_COUNT=0 ## these are used in exitClean
   for pair in $REPLICATE_SETS; do
     local src dst temps
+    ((__PAIR_COUNT++)) || true
     ## split dataset into source and destination parts and trim trailing slashes
     mapfile -d " " -t temps <<< "${pair//:/ }"
     src="${temps[0]}"
@@ -236,6 +244,7 @@ snapCreate() {
         logitf "WARNING: Replicating root datasets can lead to data loss.\n"
         logitf "To allow root dataset replication and disable this warning "
         logitf "set ALLOW_ROOT_DATASETS=1 in config or environment. Skipping: %s\n" "$pair"
+        ((__SKIP_COUNT++)) || true
         continue
       fi
     fi
@@ -291,21 +300,25 @@ snapCreate() {
         fi
       done
       ## no matching base, are we allowed to fallback?
-      if [[ -z "$base" ]] && [[ $FORCE_FALLBACK -ne 1 ]]; then
-        logitf "WARNING: Failed to find matching replication snapshot in destination. Skipping: %s\n" "$pair"
+      if [[ -z "$base" ]] && [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
+        logit "WARNING: Unable to find base snapshot '%s' in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
+        logitf "Set 'ALLOW_RECONCILIATION=1' to fallback to a full send. Skipping: %s\n" "$pair"
+        ((__SKIP_COUNT++)) || true
         continue
       fi
     fi
     ## without a base snapshot, the destination must be clean
     if [[ -z "$base" ]] && [[ ${#dstSnaps[@]} -gt 0 ]]; then
-      ## can we prune?
-      if [[ $FORCE_PRUNE -ne 1 ]]; then
-        logitf "WARNING: Destination contains replication snapshots not found in source. Skipping: %s\n" "$pair"
+      ## allowed to prune remote dataset?
+      if [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
+        logitf "WARNING: Destination contains snapshots not in source."
+        logitf "Set 'ALLOW_RECONCILIATION=1' to remove destination snapshots. Skipping: %s\n" "$pair"
+        ((__SKIP_COUNT++)) || true
         continue
       fi
       ## prune destination snapshots
+      logitf "Pruning destination snapshots: %s\n" "${dstSnaps[@]}"
       for snap in "${dstSnaps[@]}"; do
-        logitf "Pruning destination snapshot: %s\n" "$snap"
         snapDestroy "$snap" "$dstHost"
       done
     fi
@@ -436,6 +449,7 @@ loadConfig() {
   readonly TMPDIR=${TMPDIR:-"/tmp"}
   readonly REPLICATE_SETS ## no default value
   readonly ALLOW_ROOT_DATASETS=${ALLOW_ROOT_DATASETS:-0}
+  readonly ALLOW_RECONCILIATION=${ALLOW_RECONCILIATION:-0}
   readonly RECURSE_CHILDREN=${RECURSE_CHILDREN:-0}
   readonly SNAP_KEEP=${SNAP_KEEP:-2}
   readonly SYSLOG=${SYSLOG:-1}
@@ -455,8 +469,6 @@ loadConfig() {
   readonly DEST_PIPE_WITH_HOST=${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}
   readonly DEST_PIPE_WITHOUT_HOST=${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}
   readonly HOST_CHECK=${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}
-  readonly FORCE_FALLBACK=${FORCE_FALLBACK:-0}
-  readonly FORCE_PRUNE=${FORCE_PRUNE:-0}
   ## check configuration
   if [[ -n "$LOG_BASE" ]] && [[ ! -d "$LOG_BASE" ]]; then
     mkdir -p "$LOG_BASE"

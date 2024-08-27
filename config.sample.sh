@@ -32,33 +32,38 @@
 ##
 #ALLOW_ROOT_DATASETS=0
 
-## Fallback to full send when source and destination have drifted. It is
-## expected that the destination dataset is a 1:1 copy of the source.
-## Modification of the destination data set by removing snapshots
-## shared with the source often results in failure. Setting this option
-## to "1" will cause the script to fallback to a full send of all source
-## snapshots to the destination dataset. When combined with the "-F" option
-## in the destination receive pipe, this option will force a reconciliation.
-## This option will NEVER alter the source. The source is always authoritative.
+## Manual alteration of the source or destination datasets by removing
+## snapshots often results in failure. It is expected that datasets configured
+## for replication are a 1:1 copy of each other after the first script run.
+## Setting this option to "1" allows the script to attempt reconciliation when
+## source and destination datasets have diverged.
+##
+## NOTE: The source is always authoritative. Reconciliation will only
+## affect the destination dataset.
+##
+## Setting this option to "1" will result in the following potentially
+## destructive behavior for the destination dataset.
+##
+## - If the script is unable to find the source base snapshot
+##   in the destination dataset. The script will fallback to a full send.
+##   When combined with the "-F" option in the destination receive pipe,
+##   this option will force a reconciliation. ZFS will automatically remove
+##   snapshots in the destination that do not exist within the source.
+## - If the script determines that replication snapshots exist in the
+##   destination dataset, and no base snapshot is present in the source.
+##   The script will remove ALL destination snapshots that appear to have been
+##   created by this script and instruct ZFS to do a full send of the source
+##   to the destination.
+##
+## These scenarios should never happen under normal circumstances.
+## Setting "ALLOW_RECONCILIATION" to "1" will allow the script to push
+## past failures caused by divergent source and destination datasets to
+## create a 1:1 copy of the source in the destination.
 ##
 ## 0 - disable (default)
 ## 1 - enable (use at your own risk)
 ##
-#FORCE_FALLBACK=0
-
-## Prune destination snapshots when a drift is detected. Similar to
-## the "FORCE_FALLBACK" option above, it is expected that source and destination
-## datasets are 1:1 copies after the first run of the script. Manually
-## altering source or destination snapshots will normally result in failures.
-## Setting this option to "1" will cause the script to remove snapshots that
-## appear to have been created by this script from the destination if they do
-## not exist on the source dataset. This option will NEVER alter the source.
-## The source is always authoritative.
-##
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-##
-#FORCE_PRUNE=0
+#ALLOW_RECONCILIATION=0
 
 ## Option to recursively snapshot children of datasets contained
 ## in the replication set.

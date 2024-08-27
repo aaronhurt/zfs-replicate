@@ -4,12 +4,15 @@ A Bash script to automate ZFS Replication.
 
 ## Features
 
-- The source pool and dataset are always authoritative
-- Supports push and pull replication with local and remote datasets
-- Supports multiple pool/dataset pairs to replicate
-- Logging leverages syslog (via logger) by default, but local logging can be configured if desired
-- Runs off a well documented `config.sh` file and/or environment variables passed to the script
-- Can be run on any schedule using cron or similar mechanism
+- Source pools and datasets are always authoritative, the script will always defer to the source.
+- Supports push and pull replication with local and remote datasets.
+- Supports multiple pool/dataset pairs to replicate.
+- Supports divergence detection and reconciliation of destination datasets.
+- Logging leverages syslog (via logger) by default, but local logging may be configured.
+- Includes a well documented `config.sh` file that may be used as configuration or as reference for environment
+  variables passed to the script.
+- May be run on any schedule using cron or similar mechanism.
+- May be sourced and leveraged and/or by in other Bash scripts.
 - Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 
@@ -36,6 +39,15 @@ directory as the script if one is not passed via the command line.
 The config file is very well commented and the contents of the sample config are shown below. The only required
 setting without a default is the `REPLICATE_SETS` option. The script will error out on launch if required configuration
 is not met.
+
+## FreeBSD Package
+
+This script is available in the FreeBSD package and ports tree.
+https://www.freshports.org/sysutils/zfs-replicate/
+
+Special thanks to @tschettervictor for taking over maintenance of the package, suggesting new features, and testing
+for the v1.0 release. This script has been published to GitHub since 2012 and largely untouched since 2017. The v1.0
+release updates mark the first major changes to this script in over 7 years.
 
 ### Available Command Line Options
 
@@ -87,33 +99,38 @@ Options:
 ##
 #ALLOW_ROOT_DATASETS=0
 
-## Fallback to full send when source and destination have drifted. It is
-## expected that the destination dataset is a 1:1 copy of the source.
-## Modification of the destination data set by removing snapshots
-## shared with the source often results in failure. Setting this option
-## to "1" will cause the script to fallback to a full send of all source
-## snapshots to the destination dataset. When combined with the "-F" option
-## in the destination receive pipe, this option will force a reconciliation.
-## This option will NEVER alter the source. The source is always authoritative.
+## Manual alteration of the source or destination datasets by removing
+## snapshots often results in failure. It is expected that datasets configured
+## for replication are a 1:1 copy of each other after the first script run.
+## Setting this option to "1" allows the script to attempt reconciliation when
+## source and destination datasets have diverged.
+##
+## NOTE: The source is always authoritative. Reconciliation will only
+## affect the destination dataset.
+##
+## Setting this option to "1" will result in the following potentially
+## destructive behavior for the destination dataset.
+##
+## - If the script is unable to find the source base snapshot
+##   in the destination dataset. The script will fallback to a full send.
+##   When combined with the "-F" option in the destination receive pipe,
+##   this option will force a reconciliation. ZFS will automatically remove
+##   snapshots in the destination that do not exist within the source.
+## - If the script determines that replication snapshots exist in the
+##   destination dataset, and no base snapshot is present in the source.
+##   The script will remove ALL destination snapshots that appear to have been
+##   created by this script and instruct ZFS to do a full send of the source
+##   to the destination.
+##
+## These scenarios should never happen under normal circumstances.
+## Setting "ALLOW_RECONCILIATION" to "1" will allow the script to push
+## past failures caused by divergent source and destination datasets to
+## create a 1:1 copy of the source in the destination.
 ##
 ## 0 - disable (default)
 ## 1 - enable (use at your own risk)
 ##
-#FORCE_FALLBACK=0
-
-## Prune destination snapshots when a drift is detected. Similar to
-## the "FORCE_FALLBACK" option above, it is expected that source and destination
-## datasets are 1:1 copies after the first run of the script. Manually
-## altering source or destination snapshots will normally result in failures.
-## Setting this option to "1" will cause the script to remove snapshots that
-## appear to have been created by this script from the destination if they do
-## not exist on the source dataset. This option will NEVER alter the source.
-## The source is always authoritative.
-##
-## 0 - disable (default)
-## 1 - enable (use at your own risk)
-##
-#FORCE_PRUNE=0
+#ALLOW_RECONCILIATION=0
 
 ## Option to recursively snapshot children of datasets contained
 ## in the replication set.
@@ -237,3 +254,4 @@ LOG_BASE="./logs" SYSLOG=0 SSH="ssh -l root" REPLICATE_SETS="srcPool/srcFS:destP
 ## Notes
 
 If you use this script, let me know, also please report issues via GitHub so this may be improved.
+
