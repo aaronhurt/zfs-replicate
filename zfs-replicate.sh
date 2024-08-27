@@ -153,11 +153,11 @@ checkHost() {
 ## small wrapper around zfs destroy
 snapDestroy() {
   local snap=$1 host=$2 args prefix
+  if [[ $RECURSE_CHILDREN -eq 1 ]]; then
+    args="-r "
+  fi
   if [[ -n "$host" ]]; then
     prefix="$SSH $host "
-  fi
-  if [[ "$RECURSE_CHILDREN" -eq 1 ]]; then
-    args="-r "
   fi
   logitf "Deleting snapshot: %s\n" "$snap"
   # shellcheck disable=SC2086
@@ -198,10 +198,14 @@ snapSend() {
 
 ## list replication snapshots
 snapList() {
-  local set=$1 host=$2 args prefix snaps snap
-  ## limit depth to 1 if not recursive
-  if [[ "$RECURSE_CHILDREN" -ne 1 ]]; then
+  local set=$1 host=$2 source=${3:-1} args prefix snaps snap
+  ## limit depth to 1 if taking recursive snapshots
+  if [[ $RECURSE_CHILDREN -eq 1 ]]; then
     args="-d 1 "
+    ## source only needs 1 level, destination needs 2
+    if [[ $source -ne 1 ]]; then
+      args="-d 2 "
+    fi
   fi
   ## set prefix based on host
   if [[ -n "$host" ]]; then
@@ -209,7 +213,7 @@ snapList() {
   fi
   ## get snapshots from host that match our pattern
   # shellcheck disable=SC2086
-  mapfile -t snaps < <($prefix$ZFS list -Hr -o name -s creation -t snapshot "$set")
+  mapfile -t snaps < <($prefix$ZFS list -Hr -o name -s creation -t snapshot $args"$set")
   ## filter snaps matching our pattern
   local idx
   for idx in "${!snaps[@]}"; do
@@ -269,8 +273,8 @@ snapCreate() {
     fi
     ## get source and destination snapshots
     local srcSnaps dstSnaps snap
-    mapfile -t srcSnaps < <(snapList "$src" "$srcHost")
-    mapfile -t dstSnaps < <(snapList "$dst" "$dstHost")
+    mapfile -t srcSnaps < <(snapList "$src" "$srcHost" 1)
+    mapfile -t dstSnaps < <(snapList "$dst" "$dstHost" 0)
     for snap in "${srcSnaps[@]}"; do
       ## while we are here...check for our current snap name
       if [[ "$snap" == "${src}@${name}" ]]; then
