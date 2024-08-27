@@ -15,35 +15,46 @@
 ##   - sourcePool/sourceDataset:destinationPool/destinationDataset
 ## Multiple space separated sets may be specified.
 ## Pools and dataset pairs must exist on the respective servers.
+##
 #REPLICATE_SETS="localpool/localdataset:remotepool/remotedataset"
 
 ## Allow replication of root datasets.
 ## If "REPLICATE_SETS" contains root datasets and "ALLOW_ROOT_DATASETS" is
 ## NOT set to 1, root datasets will be skipped and a warning will be printed.
+##
 ## 0 - disable (default)
 ## 1 - enable (use at your own risk)
+##
 #ALLOW_ROOT_DATASETS=0
 
-## Option to recursively snapshot children of all datasets listed above.
+## Option to recursively snapshot children of datasets contained
+## in the replication set.
+##
 ## 0 - disable (default)
 ## 1 - enable
+##
 #RECURSE_CHILDREN=0
 
 ## The number of snapshots to keep for each dataset.
 ## Older snapshots, by creation date, will be deleted.
 ## A minimum of 2 snapshots must be kept for replication to work.
 ## This defaults to 2 if not set.
+##
 #SNAP_KEEP=2
 
-## Option to write logs to syslog via the "logger" tool.
+## Option to write logs to syslog via the "logger" tool. This option
+## may be enabled or disabled independently from log file settings.
+##
 ## 0 - disable
 ## 1 - enable (default)
+##
 #SYSLOG=1
 
 ## Optional logging facility to use with syslog. The default facility
 ## is "user" unless changed below. Other common options include local
 ## facilities 0-7.
 ## Example: local0, local1, local2, local3, local4, local5, local6, or local7
+##
 #SYSLOG_FACILITY="user"
 
 ## The following substitutions for current date information
@@ -58,6 +69,7 @@
 ## String used for snapshot names and log tags.
 ## Example: pool0/someplace@autorep-08242024_1724527527
 ## The default is "%MOY%%DOM%%CYR%_%NOW%"
+##
 #TAG="%MOY%%DOM%%CYR%_%NOW%"
 
 ## The log file needs to start with "autorep-" in order for log cleanup
@@ -65,21 +77,25 @@
 ## will disable the writing of the standalone log file. The "%TAG%" substitution
 ## and/or other date substitutions may be used. The default is "autorep-%TAG%.log"
 ## When enabled logs will be placed under the "LOG_BASE" path set above.
+##
 #LOG_FILE="autorep-%TAG%.log"
 
 ## Number of log files to keep. Note, this is only used
 ## if "LOG_BASE" is set to a non-empty value above.
 ## Older logs, by creation date, will be deleted.
 ## This defaults to 5 if not set.
+##
 #LOG_KEEP=5
 
 ## Set the destination for physical log files to reside. By default
 ## logging is done via syslog. This setting will always be treated as a
 ## directory and not a file.
+##
 #LOG_BASE="/var/log/zfs-replicate"
 
 ## Path to the system "logger" executable.
 ## The default uses the first "logger" executable found in $PATH.
+##
 #LOGGER=$(which logger)
 
 ## Path to GNU "find" binary. Solaris find does not support the "-maxdepth"
@@ -87,16 +103,19 @@
 ## On solaris 11, GNU find is typically located at "/usr/bin/gfind".
 ## The default uses the first "find" executable in $PATH.
 ## This is NOT required when using syslog.
+##
 #FIND=$(which find)
 
 ## Path to the system "zfs" binary. The default uses the first "zfs"
 ## executable found in $PATH.
+##
 #ZFS=$(which zfs)
 
 ## Path to the system "ssh" binary. You may also include custom arguments
 ## to SSH here or in the "DEST_PIPE_WITH_HOST" option above.
 ## Example: SSH="ssh -l root" to login as root to target host.
 ## The default uses the first "ssh" executable found in $PATH.
+##
 #SSH=$(which ssh)
 
 ## Set the pipe to the destination pool. But DO NOT INCLUDE the pipe (|)
@@ -107,6 +126,7 @@
 ## target in the replication set.
 ## The default WITH a "@host" option is "ssh %HOST% zfs receive -vFd"
 ## The default WITHOUT a "@host" option is "zfs receive -vFd".
+##
 #DEST_PIPE_WITH_HOST="$SSH %HOST% $ZFS receive -vFd"
 #DEST_PIPE_WITHOUT_HOST="$ZFS receive -vFd"
 
@@ -116,14 +136,31 @@
 ## The macro string "%HOST%" will be substituted with the value of
 ## the "@host" target in the replicate set.
 ## The default command is "ping -c1 -q -W2 %HOST%".
+##
 #HOST_CHECK="ping -c1 -q -W2 %HOST%"
 
 ## Fallback to full send when source and destination have drifted. It is
 ## expected that the destination dataset is a 1:1 copy of the source.
-## Normally, modification of the remote data set by removing snapshots shared
-## with the source would result in a failure. Setting this option to "1" will
-## cause the script to fallback to a full send of all source snapshots to
-## the destination dataset.
+## Modification of the destination data set by removing snapshots
+## shared with the source often results in failure. Setting this option
+## to "1" will cause the script to fallback to a full send of all source
+## snapshots to the destination dataset. When combined with the "-F" option
+## in the destination receive pipe, this option will force a reconciliation.
+##
 ## 0 - disable (default)
 ## 1 - enable (use at your own risk)
-#FALLBACK=0
+##
+#FORCE_FALLBACK=0
+
+## Prune destination snapshots when a drift is detected. Similar to
+## the "FORCE_FALLBACK" option above, it is expected that source and destination
+## datasets are 1:1 copies after the first run of the script. Manually
+## altering source or destination snapshots will normally result in failures.
+## Setting this option to "1" will cause the script to remove snapshots that
+## appear to have been created by this script from the destination if they do
+## not exist on the source dataset.
+##
+## 0 - disable (default)
+## 1 - enable (use at your own risk)
+##
+#FORCE_PRUNE=0

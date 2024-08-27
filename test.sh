@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2317
 ## test.sh contains zfs-replicate test cases
 set -e -o pipefail
 
@@ -32,7 +33,7 @@ export ZFS=fakeZFS
 export SSH=fakeSSH
 export HOST_CHECK=fakeCheck
 
-## source the script
+## source main script
 . ./zfs-replicate.sh || true
 
 export REPLICATE_SETS="srcPool/srcFS:dstPool/dstFS"

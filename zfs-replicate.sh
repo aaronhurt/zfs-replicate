@@ -84,8 +84,7 @@ clearLock() {
 
 ## exit and cleanup
 exitClean() {
-  local exitCode=${1:-0} extraMsg=$2
-  local logMsg="SUCCESS: Operation completed"
+  local exitCode=${1:-0} extraMsg=$2 logMsg="SUCCESS: Operation completed"
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
     logMsg=$(printf "ERROR: Operation exited unexpectedly: code=%d" "$exitCode")
@@ -147,17 +146,14 @@ checkHost() {
 
 ## small wrapper around zfs destroy
 snapDestroy() {
-  local snap=$1
-  local host=$2
-  local args
-  local prefix
+  local snap=$1 host=$2 args prefix
   if [[ -n "$host" ]]; then
     prefix="$SSH $host "
   fi
   if [[ "$RECURSE_CHILDREN" -eq 1 ]]; then
     args="-r "
   fi
-  logitf "Deleting source snapshot: %s\n" "$snap"
+  logitf "Deleting snapshot: %s\n" "$snap"
   # shellcheck disable=SC2086
   $prefix$ZFS destroy $args"$snap"
 }
@@ -275,15 +271,17 @@ snapCreate() {
         snapDestroy "${src}@${name}" "$srcHost"
       fi
     done
-    ## set our base snap for incremental generation if both src contains a sufficient
+    ## set our base snap for incremental generation if src contains a sufficient
     ## number of snapshots and the base source snapshot exists in destination data set.
     local base
     if [[ ${#srcSnaps[@]} -ge 1 ]]; then
-      local sn dn ss
+      ## set source snap base candidate
       ss="${srcSnaps[-1]}"
+      ## split snap into fs and snap name
       mapfile -d " " -t temps <<< "${ss//@/ }"
       sn="${temps[1]}"
       sn="${sn%"${sn##*[![:space:]]}"}"
+      ## loop over base snaps and check for a match
       for snap in "${dstSnaps[@]}"; do
         mapfile -d " " -t temps <<< "${snap//@/ }"
         dn="${temps[1]}"
@@ -293,10 +291,23 @@ snapCreate() {
         fi
       done
       ## no matching base, are we allowed to fallback?
-      if [[ -z "$base" ]] && [[ $FALLBACK -ne 1 ]]; then
-        logitf "WARNING: Failed to find matching snapshot in destination. Skipping: %s\n" "$pair"
+      if [[ -z "$base" ]] && [[ $FORCE_FALLBACK -ne 1 ]]; then
+        logitf "WARNING: Failed to find matching replication snapshot in destination. Skipping: %s\n" "$pair"
         continue
       fi
+    fi
+    ## without a base snapshot, the destination must be clean
+    if [[ -z "$base" ]] && [[ ${#dstSnaps[@]} -gt 0 ]]; then
+      ## can we prune?
+      if [[ $FORCE_PRUNE -ne 1 ]]; then
+        logitf "WARNING: Destination contains replication snapshots not found in source. Skipping: %s\n" "$pair"
+        continue
+      fi
+      ## prune destination snapshots
+      for snap in "${dstSnaps[@]}"; do
+        logitf "Pruning destination snapshot: %s\n" "$snap"
+        snapDestroy "$snap" "$dstHost"
+      done
     fi
     ## cleanup old snapshots
     local idx
@@ -444,7 +455,8 @@ loadConfig() {
   readonly DEST_PIPE_WITH_HOST=${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}
   readonly DEST_PIPE_WITHOUT_HOST=${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}
   readonly HOST_CHECK=${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}
-  readonly FALLBACK=${FALLBACK:-0}
+  readonly FORCE_FALLBACK=${FORCE_FALLBACK:-0}
+  readonly FORCE_PRUNE=${FORCE_PRUNE:-0}
   ## check configuration
   if [[ -n "$LOG_BASE" ]] && [[ ! -d "$LOG_BASE" ]]; then
     mkdir -p "$LOG_BASE"
