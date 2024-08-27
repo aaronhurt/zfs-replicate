@@ -51,7 +51,7 @@ the first major changes to this script in over 7 years.
 
 ### Available Command Line Options
 
-```shell
+```text
 Usage: ./zfs-replicate.sh [options] [config]
 
 Bash script to automate ZFS Replication
@@ -254,4 +254,3 @@ LOG_BASE="./logs" SYSLOG=0 SSH="ssh -l root" REPLICATE_SETS="srcPool/srcFS:destP
 ## Notes
 
 If you use this script, let me know, also please report issues via GitHub so this may be improved.
-
