@@ -12,7 +12,7 @@ A Bash script to automate ZFS Replication.
 - Includes a well documented `config.sh` file that may be used as configuration or as reference for environment
   variables passed to the script.
 - May be run on any schedule using cron or similar mechanism.
-- May be sourced and leveraged and/or by in other Bash scripts.
+- May be sourced and/or leveraged by/in other Bash scripts.
 - Test coverage of core functions via mocks in the test.sh script.
 - Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
