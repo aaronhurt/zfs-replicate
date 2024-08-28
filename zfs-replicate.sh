@@ -278,8 +278,8 @@ snapCreate() {
       checkHost "$dstHost" ## we only check the host once per set
     fi
     ## ensure datasets exist
-    checkDataset $src $srcHost
-    checkDataset $dst $dstHost
+    checkDataset "$src" "$srcHost"
+    checkDataset "$dst" "$dstHost"
     ## get source and destination snapshots
     local srcSnaps dstSnaps
     mapfile -t srcSnaps < <(snapList "$src" "$srcHost" 1)
