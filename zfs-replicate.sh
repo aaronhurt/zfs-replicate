@@ -46,7 +46,7 @@ sortLogs() {
     logs+=("${fstat}\t${log}")
   done
   ## output logs in descending age order
-  for log in $(printf "%b\n" "${logs[@]:0}" | sort -rn | cut -f2); do
+  for log in $(printf "%b\n" "${logs[@]}" | sort -rn | cut -f2); do
     printf "%s\n" "$log"
   done
 }
@@ -57,7 +57,7 @@ pruneLogs() {
   mapfile -t logs < <(sortLogs)
   ## check count and delete old logs
   if [[ "${#logs[@]}" -gt "$LOG_KEEP" ]]; then
-    printf "Deleting OLD logs: %s\n" "${logs[@]:${LOG_KEEP}}"
+    printf "pruning logs %s\n" "${logs[*]:${LOG_KEEP}}"
     rm -rf "${logs[@]:${LOG_KEEP}}"
   fi
 }
@@ -66,30 +66,30 @@ pruneLogs() {
 clearLock() {
   local lockFile=$1
   if [ -f "$lockFile" ]; then
-    printf "Deleting lockfile: %s\n" "$lockFile"
+    printf "deleting lockfile %s\n" "$lockFile"
     rm "$lockFile"
   fi
 }
 
 ## exit and cleanup
 exitClean() {
-  local exitCode=${1:-0} extraMsg=$2 logMsg status="SUCCESS"
+  local exitCode=${1:-0} extraMsg=$2 logMsg status="success"
   ## set status to warning if we skipped any datasets
   if [[ $__SKIP_COUNT -gt 0 ]]; then
     status="WARNING"
   fi
-  printf -v logMsg "%s: Total datasets: %d Skipped: %d" "$status" "$__PAIR_COUNT" "$__SKIP_COUNT"
+  printf -v logMsg "%s total sets %d skipped %d" "$status" "$__PAIR_COUNT" "$__SKIP_COUNT"
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
     status="ERROR"
-    printf -v logMsg "%s: Operation exited unexpectedly: code=%d" "$status" "$exitCode"
+    printf -v logMsg "%s: operation exited unexpectedly: code=%d" "$status" "$exitCode"
     if [[ -n "$extraMsg" ]]; then
       printf -v logMsg "%s msg=%s" "$logMsg" "$extraMsg"
     fi
   fi
   ## append extra message if available
   if [[ $exitCode -eq 0 ]] && [[ -n "$extraMsg" ]]; then
-    logMsg+=": $extraMsg"
+    printf -v logMsg "%s: %s" "$logMsg" "$extraMsg"
   fi
   ## cleanup old logs and clear locks
   pruneLogs
@@ -97,7 +97,7 @@ exitClean() {
   clearLock "${TMPDIR}"/.replicate.send.lock
   ## print log message and exit
   printf "%s\n" "$logMsg"
-  exit 0
+  exit "$exitCode"
 }
 
 ## lockfile creation and maintenance
@@ -109,16 +109,16 @@ checkLock() {
     local ps
     if ps=$(pgrep -lx -F "$lockFile"); then
       ## looks like it's still running
-      printf "ERROR: Script is already running as: %s\n" "$ps"
+      printf "ERROR: script is already running as: %s\n" "$ps"
     else
       ## stale lock file?
-      printf "ERROR: Stale lockfile: %s\n" "$lockFile"
+      printf "ERROR: stale lockfile %s\n" "$lockFile"
     fi
     ## cleanup and exit
-    exitClean 90 "confirm script is not running and delete lockfile: $lockFile"
+    exitClean 90 "confirm script is not running and delete lockfile $lockFile"
   else
     ## well no lockfile..let's make a new one
-    printf "Creating lockfile: %s\n" "$lockFile"
+    printf "creating lockfile %s\n" "$lockFile"
     printf "%d\n" "$$" > "$lockFile"
   fi
 }
@@ -129,55 +129,76 @@ checkHost() {
   if [[ -z "$HOST_CHECK" ]]; then
     return
   fi
-  local host=$1 cmd
+  local host=$1 cmd=()
   ## substitute host
-  cmd=${HOST_CHECK//%HOST%/$host}
-  printf "Checking host %s: %s\n" "$host" "$cmd"
+  read -r -a cmd <<< "${HOST_CHECK//%HOST%/$host}"
+  printf "checking host cmd=%s\n" "${cmd[*]}"
   ## run the check
-  if ! $cmd > /dev/null 2>&1; then
-    exitClean 90 "host check '$cmd' failed!"
+  if ! "${cmd[@]}" > /dev/null 2>&1; then
+    exitClean 90 "host check failed"
+  fi
+}
+
+## ensure dataset exists
+checkDataset() {
+  local set=$1 host=$2 cmd=()
+  ## build command
+  if [[ -n "$host" ]]; then
+    read -r -a cmd <<< "$SSH"
+    cmd+=("$host")
+  fi
+  cmd+=("$ZFS" "list" "-H" "-o" "name" "$set")
+  printf "checking dataset cmd=%s\n" "${cmd[*]}"
+  ## execute command
+  if ! "${cmd[@]}"; then
+    exitClean 22 "failed to list dataset: ${set}"
   fi
 }
 
 ## small wrapper around zfs destroy
 snapDestroy() {
-  local snap=$1 host=$2 args prefix
-  if [[ $RECURSE_CHILDREN -eq 1 ]]; then
-    args="-r "
-  fi
+  local snap=$1 host=$2 cmd=()
+  ## build command
   if [[ -n "$host" ]]; then
-    prefix="$SSH $host "
+    read -r -a cmd <<< "$SSH"
+    cmd+=("$host")
   fi
-  printf "Deleting snapshot: %s\n" "$snap"
-  # shellcheck disable=SC2086
-  $prefix$ZFS destroy $args"$snap"
+  cmd+=("$ZFS" "destroy")
+  if [[ $RECURSE_CHILDREN -eq 1 ]]; then
+    cmd+=("-r")
+  fi
+  cmd+=("$snap")
+  printf "destroying snapshot cmd=%s\n" "${cmd[*]}"
+  ## ignore error from destroy and count on logging to alert the end-user
+  ## destroying recursive snapshots can lead to "snapshot not found" errors
+  "${cmd[@]}" || true
 }
 
 ## main replication function
 snapSend() {
-  local base=$1 snap=$2 src=$3 srcHost=$4 dst=$5 dstHost=$6
+  local base=$1 snap=$2 src=$3 srcHost=$4 dst=$5 dstHost=$6 cmd=() pipe=()
   ## check our send lockfile
   checkLock "${TMPDIR}/.replicate.send.lock"
-  ## create initial send command based on arguments
-  ## if first snap name is not empty generate an incremental
-  local args="-Rs"
-  if [ -n "$base" ]; then
-    args="-Rs -I $base"
-  fi
-  ## set the command prefix based on source host
-  local prefix
+  ## begin building send command
   if [[ -n "$srcHost" ]]; then
-    prefix="$SSH $srcHost "
+    read -r -a cmd <<< "$SSH"
+    cmd+=("$srcHost")
   fi
+  cmd+=("$ZFS" "send" "-Rs")
+  ## if first snap name is not empty generate an incremental
+  if [ -n "$base" ]; then
+    cmd+=("-I" "$base")
+  fi
+  cmd+=("${src}@${snap}")
   ## set destination pipe based on destination host
-  local pipe="$DEST_PIPE_WITHOUT_HOST"
+  read -r -a pipe <<< "$DEST_PIPE_WITHOUT_HOST"
   if [[ -n "$dstHost" ]]; then
-    pipe=${DEST_PIPE_WITH_HOST//%HOST%/$dstHost}
+    read -r -a pipe <<< "${DEST_PIPE_WITH_HOST//%HOST%/$dstHost}"
   fi
-  printf "Sending snapshot %s@%s via %s %s\n" "$src" "$snap" "$pipe" "$dst"
+  pipe+=("$dst")
+  printf "sending snapshot cmd=%s | %s\n" "${cmd[*]}" "${pipe[*]}"
   ## execute send and check return
-  # shellcheck disable=SC2086
-  if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
+  if ! "${cmd[@]}" | "${pipe[@]}"; then
     snapDestroy "${src}@${name}" "$srcHost"
     exitClean 30 "failed to send snapshot: ${src}@${name}"
   fi
@@ -187,27 +208,25 @@ snapSend() {
 
 ## list replication snapshots
 snapList() {
-  local set=$1 host=$2 source=${3:-1} args prefix snaps snap
-  ## limit depth to 1 if taking recursive snapshots
-  if [[ $RECURSE_CHILDREN -eq 1 ]]; then
-    args="-d 1 "
-    ## source only needs 1 level, destination needs 2
-    if [[ $source -ne 1 ]]; then
-      args="-d 2 "
-    fi
-  fi
-  ## set prefix based on host
+  local set=$1 host=$2 depth=${3:-0} cmd=() snaps snap
+  ## build send command
   if [[ -n "$host" ]]; then
-    prefix="$SSH $host "
+    read -r -a cmd <<< "$SSH"
+    cmd+=("$host")
   fi
-  ## get snapshots from host that match our pattern
-  # shellcheck disable=SC2086
-  mapfile -t snaps < <($prefix$ZFS list -Hr -o name -s creation -t snapshot $args"$set")
+  cmd+=("$ZFS" "list" "-Hr" "-o" "name" "-s" "creation" "-t" "snapshot")
+  if [[ $depth -gt 0 ]]; then
+    cmd+=("-d" "$depth")
+  fi
+  cmd+=("$set")
+  ## get snapshots from host
+  if ! snaps="$("${cmd[@]}")"; then
+    exitClean 21 "failed to list snapshots for dataset: ${set}"
+  fi
   ## filter snaps matching our pattern
-  local idx
-  for idx in "${!snaps[@]}"; do
-    if [[ ${snaps[idx]} == *@autorep-* ]]; then
-      printf "%s\n" "${snaps[idx]}"
+  for snap in $snaps; do
+    if [[ "$snap" == *"@autorep-"* ]]; then
+      printf "%s\n" "$snap"
     fi
   done
 }
@@ -217,58 +236,59 @@ snapCreate() {
   ## make sure we aren't ever creating simultaneous snapshots
   checkLock "${TMPDIR}/.replicate.snapshot.lock"
   ## set our snap name
-  local name="autorep-${TAG}"
+  local name="autorep-${TAG}" temps="" tempa=() src dst pair
   ## generate snapshot list and cleanup old snapshots
-  local pair
   __PAIR_COUNT=0 __SKIP_COUNT=0 ## these are used in exitClean
   for pair in $REPLICATE_SETS; do
-    local src dst temps
     ((__PAIR_COUNT++)) || true
     ## split dataset into source and destination parts and trim trailing slashes
-    mapfile -d " " -t temps <<< "${pair//:/ }"
-    src="${temps[0]}"
+    read -r -a tempa <<< "${pair//:/ }"
+    src="${tempa[0]}"
     src="${src%"${src##*[![:space:]]}"}"
-    dst="${temps[1]}"
+    dst="${tempa[1]}"
     dst="${dst%"${dst##*[![:space:]]}"}"
     ## check for root datasets
     if [[ "$ALLOW_ROOT_DATASETS" -ne 1 ]]; then
       if [ "$src" == "$(basename "$src")" ] ||
         [ "$dst" == "$(basename "$dst")" ]; then
-        printf "WARNING: Replicating root datasets can lead to data loss.\n"
-        printf "Set 'ALLOW_ROOT_DATASETS=1' in config or environment to disable warning. Skipping: %s\n" "$pair"
+        temps="replicating root datasets can lead to data loss - set 'ALLOW_ROOT_DATASETS=1' to disable warning"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
         ((__SKIP_COUNT++)) || true
         continue
       fi
     fi
     ## look for host options on source and destination
-    local srcHost dstHost temps
+    local srcHost dstHost
     if [[ "$src" == *@* ]]; then
       ## split and trim trailing spaces
-      mapfile -d " " -t temps <<< "${src//@/ }"
-      src="${temps[0]}"
+      read -r -a tempa <<< "${src//@/ }"
+      src="${tempa[0]}"
       src="${src%"${src##*[![:space:]]}"}"
-      srcHost="${temps[1]}"
+      srcHost="${tempa[1]}"
       srcHost="${srcHost%"${srcHost##*[![:space:]]}"}"
       checkHost "$srcHost" ## we only check the host once per set
     fi
     if [[ "$dst" == *@* ]]; then
       ## split and trim trailing spaces
-      mapfile -d " " -t temps <<< "${dst//@/ }"
-      dst="${temps[0]}"
+      read -r -a tempa <<< "${dst//@/ }"
+      dst="${tempa[0]}"
       dst="${dst%"${dst##*[![:space:]]}"}"
-      dstHost="${temps[1]}"
+      dstHost="${tempa[1]}"
       dstHost="${dstHost%"${dstHost##*[![:space:]]}"}"
       checkHost "$dstHost" ## we only check the host once per set
     fi
+    ## ensure datasets exist
+    checkDataset $src $srcHost
+    checkDataset $dst $dstHost
     ## get source and destination snapshots
-    local srcSnaps dstSnaps snap
+    local srcSnaps dstSnaps
     mapfile -t srcSnaps < <(snapList "$src" "$srcHost" 1)
     mapfile -t dstSnaps < <(snapList "$dst" "$dstHost" 0)
     for snap in "${srcSnaps[@]}"; do
       ## while we are here...check for our current snap name
       if [[ "$snap" == "${src}@${name}" ]]; then
         ## looks like it's here...we better kill it
-        printf "Destroying DUPLICATE snapshot: %s@%s\n" "$src" "$name"
+        printf "destroying duplicate snapshot: %s@%s\n" "$src" "$name"
         snapDestroy "${src}@${name}" "$srcHost"
       fi
     done
@@ -279,22 +299,23 @@ snapCreate() {
       ## set source snap base candidate
       ss="${srcSnaps[-1]}"
       ## split snap into fs and snap name
-      mapfile -d " " -t temps <<< "${ss//@/ }"
-      sn="${temps[1]}"
+      read -r -a tempa <<< "${ss//@/ }"
+      sn="${tempa[1]}"
       sn="${sn%"${sn##*[![:space:]]}"}"
       ## loop over base snaps and check for a match
       for snap in "${dstSnaps[@]}"; do
-        mapfile -d " " -t temps <<< "${snap//@/ }"
-        dn="${temps[1]}"
+        read -r -a tempa <<< "${snap//@/ }"
+        dn="${tempa[1]}"
         dn="${dn%"${dn##*[![:space:]]}"}"
         if [[ "$dn" == "$sn" ]]; then
           base="$ss"
         fi
       done
       ## no matching base, are we allowed to fallback?
-      if [[ -z "$base" ]] && [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
-        printf "WARNING: Unable to find base snapshot '%s' in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
-        printf "Set 'ALLOW_RECONCILIATION=1' to fallback to a full send. Skipping: %s\n" "$pair"
+      if [[ -z "$base" ]] && [[ ${#dstSnaps[@]} -ge 1 ]] && [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
+        printf -v temps "source snapshot '%s' not in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
+        printf -v temps "%s - set 'ALLOW_RECONCILIATION=1' to fallback to a full send" "$temps"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
         ((__SKIP_COUNT++)) || true
         continue
       fi
@@ -303,13 +324,13 @@ snapCreate() {
     if [[ -z "$base" ]] && [[ ${#dstSnaps[@]} -gt 0 ]]; then
       ## allowed to prune remote dataset?
       if [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
-        printf "WARNING: Destination contains snapshots not in source.\n"
-        printf "Set 'ALLOW_RECONCILIATION=1' to remove destination snapshots. Skipping: %s\n" "$pair"
+        temps="destination contains snapshots not in source - set 'ALLOW_RECONCILIATION=1' to prune snapshots"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
         ((__SKIP_COUNT++)) || true
         continue
       fi
       ## prune destination snapshots
-      printf "Pruning destination snapshots: %s\n" "${dstSnaps[@]}"
+      printf "pruning destination snapshots: %s\n" "${dstSnaps[*]}"
       for snap in "${dstSnaps[@]}"; do
         snapDestroy "$snap" "$dstHost"
       done
@@ -319,25 +340,24 @@ snapCreate() {
     for idx in "${!srcSnaps[@]}"; do
       if [[ ${#srcSnaps[@]} -ge $SNAP_KEEP ]]; then
         ## snaps are sorted above by creation in ascending order
-        printf "Found OLD snapshot: %s\n" "${srcSnaps[idx]}"
+        printf "found old snapshot %s\n" "${srcSnaps[idx]}"
         snapDestroy "${srcSnaps[idx]}" "$srcHost"
         unset 'srcSnaps[idx]'
       fi
     done
-    ## set the command prefix based on source host
-    local prefix
-    if [[ -n "$srcHost" ]]; then
-      prefix="$SSH $srcHost "
-    fi
-    ## check if we are supposed to be recursive
-    local args
-    if [[ $RECURSE_CHILDREN -eq 1 ]]; then
-      args="-r "
-    fi
     ## come on already...make that snapshot
-    printf "Creating source snapshot: %s@%s\n" "$src" "$name"
-    # shellcheck disable=SC2086
-    if ! $prefix$ZFS snapshot $args$src@$name; then
+    if [[ -n "$srcHost" ]]; then
+      read -r -a cmd <<< "$SSH"
+      cmd+=("$srcHost")
+    fi
+    cmd+=("$ZFS" "snapshot")
+    ## check if we are supposed to be recursive
+    if [[ $RECURSE_CHILDREN -eq 1 ]]; then
+      cmd+=("-r")
+    fi
+    cmd+=("$src@$name")
+    printf "taking snapshot cmd=%s\n" "${cmd[*]}"
+    if ! "${cmd[@]}"; then
       exitClean 20 "failed to create snapshot: ${src}@${name}"
     fi
     ## send snapshot to destination
@@ -367,7 +387,7 @@ showStatus() {
   if [[ -n "${logs[0]}" ]]; then
     printf "Last output from %s:\n%s\n" "$SCRIPT" "$(cat "${logs[0]}")"
   else
-    printf "Unable to find most recent logfile, cannot print status."
+    printf "Unable to find most recent log file, cannot print status."
   fi
   exit 0
 }
@@ -421,15 +441,15 @@ loadConfig() {
   [[ -z "$configFile" ]] && configFile=$1
   ## attempt to load configuration
   if [[ -f "$configFile" ]]; then
-    printf "Sourcing config file: %s\n" "$configFile"
+    printf "sourcing config file %s\n" "$configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   elif configFile="$(dirname "${BASH_SOURCE[0]}")/config.sh" && [[ -f "$configFile" ]]; then
-    printf "Sourcing config file: %s\n" "$configFile"
+    printf "sourcing config file %s\n" "$configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   else
-    printf "Loading configuration from defaults and environmental settings.\n"
+    printf "loading configuration from defaults and environmental settings.\n"
   fi
   declare -A DATE_MACROS=(
     ["DOW"]=$(date "+%a") ["DOM"]=$(date "+%d") ["MOY"]=$(date "+%m")
