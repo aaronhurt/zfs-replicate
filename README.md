@@ -16,6 +16,15 @@ A Bash script to automate ZFS Replication.
 - Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 
+## FreeBSD Package
+
+This script is available in the FreeBSD [package and ports tree](https://www.freshports.org/sysutils/zfs-replicate/).
+
+Special thanks to [@tschettervictor](https://www.github.com/tschettervictor) for taking over maintenance of the
+package, suggesting new features, and testing for the v1.0 release.
+This script has been published to GitHub since 2012 and largely untouched since 2017. The v1.0 release updates mark
+the first major changes to this script in over 7 years.
+
 ## Warning
 
 Replicating a root dataset to a remote will rewrite the remote pool with forced replication.
@@ -29,25 +38,15 @@ To replicate a root dataset safely to another pool consider `REPLICATE_SETS="zpo
 This will result in a 1:1 copy of `zpoolOne` in a separate data set of `zpoolTwo` and will not affect other datasets
 currently present on the destination.
 
-## To Use
+## Configuration
 
-Configuration is done via a separate config that may be passed as an option or as the last argument to the script.
-The config file is optional. All configuration may also be passed via environment variables. Most options have sane
+Configuration is done via an optional config file as environment variables. Most options have sane
 defaults to keep configuration to a minimum. The script will attempt to locate a file called `config.sh` in the same
 directory as the script if one is not passed via the command line.
 
 The config file is very well commented and the contents of the sample config are shown below. The only required
 setting without a default is the `REPLICATE_SETS` option. The script will error out on launch if required configuration
 is not met.
-
-## FreeBSD Package
-
-This script is available in the FreeBSD [package and ports tree](https://www.freshports.org/sysutils/zfs-replicate/).
-
-Special thanks to [@tschettervictor](https://www.github.com/tschettervictor) for taking over maintenance of the
-package, suggesting new features, and testing for the v1.0 release.
-This script has been published to GitHub since 2012 and largely untouched since 2017. The v1.0 release updates mark
-the first major changes to this script in over 7 years.
 
 ### Available Command Line Options
 
@@ -72,9 +71,7 @@ Options:
 ## Datasets to replicate. These must be zfs paths not mount points.
 ## The format general format is "source:destination". The source is always
 ## considered authoritative. This holds true for reconciliation attempts with
-## the "FORCE_FALLBACK" and "FORCE_PRUNE" options describe below as well.
-## This script will NEVER modify the source as a means to prevent a failure.
-## The "FORCE_FALLBACK" and "FORCE_PRUNE" options only affect the destination.
+## the "ALLOW_RECONCILIATION" option described below as well.
 ##
 ## Examples replicating a local source to a remote destination (PUSH):
 ##   - sourcePool/sourceDataset:destinationPool@host
@@ -106,7 +103,8 @@ Options:
 ## source and destination datasets have diverged.
 ##
 ## NOTE: The source is always authoritative. Reconciliation will only
-## affect the destination dataset.
+## affect the destination dataset. This script will NEVER modify the source
+## as a means to prevent reconcile divergence between datasets.
 ##
 ## Setting this option to "1" will result in the following potentially
 ## destructive behavior for the destination dataset.
@@ -253,4 +251,4 @@ LOG_BASE="./logs" SYSLOG=0 SSH="ssh -l root" REPLICATE_SETS="srcPool/srcFS:destP
 
 ## Notes
 
-If you use this script, let me know, also please report issues via GitHub so this may be improved.
+If you use this script, let me know. Report issues via GitHub so they may be resolved.

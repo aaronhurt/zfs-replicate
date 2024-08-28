@@ -6,23 +6,6 @@ set -e -o pipefail
 ##### warning gremlins live below here #####
 ############################################
 
-## handle logging to file or syslog
-writeLog() {
-  local line logf="/dev/null"
-  ## if a log base and file has been configured set them
-  if [[ -n "$LOG_BASE" ]] && [[ -n "$LOG_FILE" ]]; then
-    logf="${LOG_BASE}/${LOG_FILE}"
-  fi
-  while IFS= read -r line; do
-    ## always print to stdout and copy to logfile if set
-    printf "%s %s: %s\n" "$(date '+%b %d %T')" "$SCRIPT" "$line" | tee -a "$logf"
-    ## if syslog has been enabled write to syslog via logger
-    if [[ -n "$SYSLOG" ]] && [[ "$SYSLOG" -eq 1 ]] && [[ -n "$LOGGER" ]]; then
-      $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"
-    fi
-  done
-}
-
 ## output log files in decreasing age order
 sortLogs() {
   ## check if file logging is enabled
@@ -115,7 +98,7 @@ checkLock() {
       printf "ERROR: stale lockfile %s\n" "$lockFile"
     fi
     ## cleanup and exit
-    exitClean 90 "confirm script is not running and delete lockfile $lockFile"
+    exitClean 128 "confirm script is not running and delete lockfile $lockFile"
   else
     ## well no lockfile..let's make a new one
     printf "creating lockfile %s\n" "$lockFile"
@@ -135,7 +118,7 @@ checkHost() {
   printf "checking host cmd=%s\n" "${cmd[*]}"
   ## run the check
   if ! "${cmd[@]}" > /dev/null 2>&1; then
-    exitClean 90 "host check failed"
+    exitClean 128 "host check failed"
   fi
 }
 
@@ -151,7 +134,7 @@ checkDataset() {
   printf "checking dataset cmd=%s\n" "${cmd[*]}"
   ## execute command
   if ! "${cmd[@]}"; then
-    exitClean 22 "failed to list dataset: ${set}"
+    exitClean 128 "failed to list dataset: ${set}"
   fi
 }
 
@@ -200,7 +183,7 @@ snapSend() {
   ## execute send and check return
   if ! "${cmd[@]}" | "${pipe[@]}"; then
     snapDestroy "${src}@${name}" "$srcHost"
-    exitClean 30 "failed to send snapshot: ${src}@${name}"
+    exitClean 128 "failed to send snapshot: ${src}@${name}"
   fi
   ## clear lockfile
   clearLock "${TMPDIR}/.replicate.send.lock"
@@ -221,7 +204,7 @@ snapList() {
   cmd+=("$set")
   ## get snapshots from host
   if ! snaps="$("${cmd[@]}")"; then
-    exitClean 21 "failed to list snapshots for dataset: ${set}"
+    exitClean 128 "failed to list snapshots for dataset: ${set}"
   fi
   ## filter snaps matching our pattern
   for snap in $snaps; do
@@ -358,13 +341,36 @@ snapCreate() {
     cmd+=("$src@$name")
     printf "taking snapshot cmd=%s\n" "${cmd[*]}"
     if ! "${cmd[@]}"; then
-      exitClean 20 "failed to create snapshot: ${src}@${name}"
+      exitClean 128 "failed to create snapshot: ${src}@${name}"
     fi
     ## send snapshot to destination
     snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
   done
   ## clear our lockfile
   clearLock "${TMPDIR}/.snapshot.lock"
+}
+
+## handle logging to file or syslog
+writeLog() {
+  local line=$1 logf="/dev/null"
+  ## if a log base and file has been configured set them
+  if [[ -n "$LOG_BASE" ]] && [[ -n "$LOG_FILE" ]]; then
+    logf="${LOG_BASE}/${LOG_FILE}"
+  fi
+  ## always print to stdout and copy to logfile if set
+  printf "%s %s[%d]: %s\n" "$(date '+%b %d %T')" "$SCRIPT" "$$" "$line" | tee -a "$logf"
+  ## if syslog has been enabled write to syslog via logger
+  if [[ -n "$SYSLOG" ]] && [[ "$SYSLOG" -eq 1 ]] && [[ -n "$LOGGER" ]]; then
+    $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"
+  fi
+}
+
+## read from stdin till script exit
+captureOutput() {
+  local line
+  while IFS= read -r line; do
+    writeLog "$line"
+  done
 }
 
 ## perform macro substitution for tags
@@ -404,9 +410,14 @@ showHelp() {
 }
 
 ## load configuration defaults, parse flags, config, and environment
+## captureOutput is not running yet, so use writeLog directly in loadConfig
 loadConfig() {
-  ## read flags
-  local status=0 configFile opt OPTARG OPTIND
+  ## set SCRIPT used by writeLog and showStatus
+  SCRIPT="$(basename "${BASH_SOURCE[0]}")"
+  readonly SCRIPT
+  ## local variables only used in loadConfig
+  local status=0 configFile opt OPTARG OPTIND line
+  ## read command line flags
   while getopts ":shc:-:" opt; do
     if [[ "$opt" == "-" ]]; then
       opt="${OPTARG%%=*}"                  # extract long option name
@@ -426,12 +437,10 @@ loadConfig() {
         showHelp
         ;;
       \?) # bad short option
-        printf "%s: illegal option -%s\n" "${BASH_SOURCE[0]}" "$OPTARG" >&2
-        exit 2
+        writeLog "ERROR: illegal option -${OPTARG}" && exit 1
         ;;
       *) # bad long option
-        printf "%s: illegal option --%s\n" "${BASH_SOURCE[0]}" "$opt" >&2
-        exit 2
+        writeLog "ERROR: illegal option --${opt}" && exit 1
         ;;
     esac
   done
@@ -441,22 +450,20 @@ loadConfig() {
   [[ -z "$configFile" ]] && configFile=$1
   ## attempt to load configuration
   if [[ -f "$configFile" ]]; then
-    printf "sourcing config file %s\n" "$configFile"
+    writeLog "sourcing config file $configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   elif configFile="$(dirname "${BASH_SOURCE[0]}")/config.sh" && [[ -f "$configFile" ]]; then
-    printf "sourcing config file %s\n" "$configFile"
+    writeLog "sourcing config file $configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   else
-    printf "loading configuration from defaults and environmental settings.\n"
+    writeLog "loading configuration from defaults and environmental settings."
   fi
   declare -A DATE_MACROS=(
     ["DOW"]=$(date "+%a") ["DOM"]=$(date "+%d") ["MOY"]=$(date "+%m")
     ["CYR"]=$(date "+%Y") ["NOW"]=$(date "+%s")
   )
-  SCRIPT=$(basename "${BASH_SOURCE[0]}")
-  readonly SCRIPT
   readonly DATE_MACROS
   readonly TMPDIR=${TMPDIR:-"/tmp"}
   readonly REPLICATE_SETS ## no default value
@@ -486,13 +493,13 @@ loadConfig() {
     mkdir -p "$LOG_BASE"
   fi
   if [[ -z "$REPLICATE_SETS" ]]; then
-    exitClean 10 "missing required setting: REPLICATE_SETS"
+    writeLog "ERROR: missing required setting REPLICATE_SETS" && exit 1
   fi
   if [[ -z "$ZFS" ]]; then
-    exitClean 11 "unable to locate system zfs binary"
+    writeLog "ERROR: unable to locate system zfs binary" & exit 1
   fi
   if [[ $SNAP_KEEP -lt 2 ]]; then
-    exitClean 12 "a minimum of 2 snaps are required for incremental sending"
+    writeLog "ERROR: a minimum of 2 snapshots are required for incremental sending" && exit 1
   fi
   ## show status if toggled
   if [[ $status -eq 1 ]]; then
@@ -509,4 +516,4 @@ main() {
 }
 
 ## start main if we weren't sourced
-[[ "$0" == "${BASH_SOURCE[0]}" ]] && loadConfig "$@" && main 2>&1 | writeLog
+[[ "$0" == "${BASH_SOURCE[0]}" ]] && loadConfig "$@" && main 2>&1 | captureOutput

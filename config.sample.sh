@@ -5,9 +5,7 @@
 ## Datasets to replicate. These must be zfs paths not mount points.
 ## The format general format is "source:destination". The source is always
 ## considered authoritative. This holds true for reconciliation attempts with
-## the "FORCE_FALLBACK" and "FORCE_PRUNE" options describe below as well.
-## This script will NEVER modify the source as a means to prevent a failure.
-## The "FORCE_FALLBACK" and "FORCE_PRUNE" options only affect the destination.
+## the "ALLOW_RECONCILIATION" option described below as well.
 ##
 ## Examples replicating a local source to a remote destination (PUSH):
 ##   - sourcePool/sourceDataset:destinationPool@host
@@ -39,7 +37,8 @@
 ## source and destination datasets have diverged.
 ##
 ## NOTE: The source is always authoritative. Reconciliation will only
-## affect the destination dataset.
+## affect the destination dataset. This script will NEVER modify the source
+## as a means to prevent reconcile divergence between datasets.
 ##
 ## Setting this option to "1" will result in the following potentially
 ## destructive behavior for the destination dataset.
