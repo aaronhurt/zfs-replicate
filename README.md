@@ -13,6 +13,7 @@ A Bash script to automate ZFS Replication.
   variables passed to the script.
 - May be run on any schedule using cron or similar mechanism.
 - May be sourced and leveraged and/or by in other Bash scripts.
+- Test coverage of core functions via mocks in the test.sh script.
 - Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 
@@ -27,7 +28,7 @@ the first major changes to this script in over 7 years.
 
 ## Warning
 
-Replicating a root dataset to a remote will rewrite the remote pool with forced replication.
+Replicating to a root dataset will rewrite the remote pool with forced replication.
 This script will create a true 1:1 copy of the source dataset in the destination dataset with default options.
 
 The configuration `REPLICATE_SETS="zpoolOne:zpoolTwo"` will result in `zpoolTwo` being a 1:1 copy of `zpoolOne` and may
@@ -35,7 +36,7 @@ result in data loss on `zpoolTwo`.
 
 To replicate a root dataset safely to another pool consider `REPLICATE_SETS="zpoolOne:zpoolTwo/zpoolOne"` instead.
 
-This will result in a 1:1 copy of `zpoolOne` in a separate data set of `zpoolTwo` and will not affect other datasets
+This will result in a 1:1 copy of `zpoolOne` in a separate dataset of `zpoolTwo` and will not affect other datasets
 currently present on the destination.
 
 ## Configuration

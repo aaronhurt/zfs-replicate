@@ -224,16 +224,15 @@ snapCreate() {
   __PAIR_COUNT=0 __SKIP_COUNT=0 ## these are used in exitClean
   for pair in $REPLICATE_SETS; do
     ((__PAIR_COUNT++)) || true
-    ## split dataset into source and destination parts and trim trailing slashes
+    ## split dataset into source and destination parts and trim any trailing space
     read -r -a tempa <<< "${pair//:/ }"
     src="${tempa[0]}"
     src="${src%"${src##*[![:space:]]}"}"
     dst="${tempa[1]}"
     dst="${dst%"${dst##*[![:space:]]}"}"
-    ## check for root datasets
+    ## check for root dataset destination
     if [[ "$ALLOW_ROOT_DATASETS" -ne 1 ]]; then
-      if [ "$src" == "$(basename "$src")" ] ||
-        [ "$dst" == "$(basename "$dst")" ]; then
+      if [[ "$dst" == "$(basename "$dst")" ]] || [[ "$dst" == "$(basename "$dst")/" ]]; then
         temps="replicating root datasets can lead to data loss - set 'ALLOW_ROOT_DATASETS=1' to disable warning"
         printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
         ((__SKIP_COUNT++)) || true
@@ -496,7 +495,7 @@ loadConfig() {
     writeLog "ERROR: missing required setting REPLICATE_SETS" && exit 1
   fi
   if [[ -z "$ZFS" ]]; then
-    writeLog "ERROR: unable to locate system zfs binary" & exit 1
+    writeLog "ERROR: unable to locate system zfs binary" && exit 1
   fi
   if [[ $SNAP_KEEP -lt 2 ]]; then
     writeLog "ERROR: a minimum of 2 snapshots are required for incremental sending" && exit 1
