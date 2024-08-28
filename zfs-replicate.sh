@@ -8,30 +8,19 @@ set -e -o pipefail
 
 ## handle logging to file or syslog
 writeLog() {
-  local line
-  read -r line || true ## never fail on read
-  ## always echo the line to stdout
-  echo "$line"
-  ## if a log base and file has been configured append log
+  local line logf="/dev/null"
+  ## if a log base and file has been configured set them
   if [[ -n "$LOG_BASE" ]] && [[ -n "$LOG_FILE" ]]; then
-    printf "%s %s: %s\n" "$(date "+%b %d %T")" "$SCRIPT" "$line" >> "${LOG_BASE}/${LOG_FILE}"
+    logf="${LOG_BASE}/${LOG_FILE}"
   fi
-  ## if syslog has been enabled write to syslog via logger
-  if [[ -n "$SYSLOG" ]] && [[ "$SYSLOG" -eq 1 ]] && [[ -n "$LOGGER" ]]; then
-    $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"
-  fi
-}
-
-## logging helper function
-logit() {
-  echo "$1" | writeLog
-}
-
-## logging helper function
-logitf() {
-  # shellcheck disable=SC2059
-  # shellcheck disable=SC2145
-  printf "$@" | writeLog
+  while IFS= read -r line; do
+    ## always print to stdout and copy to logfile if set
+    printf "%s %s: %s\n" "$(date '+%b %d %T')" "$SCRIPT" "$line" | tee -a "$logf"
+    ## if syslog has been enabled write to syslog via logger
+    if [[ -n "$SYSLOG" ]] && [[ "$SYSLOG" -eq 1 ]] && [[ -n "$LOGGER" ]]; then
+      $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"
+    fi
+  done
 }
 
 ## output log files in decreasing age order
@@ -54,11 +43,11 @@ sortLogs() {
         ;;
     esac
     ## append logs to array with creation time
-    logs+=("${fstat}\t${log}\n")
+    logs+=("${fstat}\t${log}")
   done
   ## output logs in descending age order
-  for log in $(echo -e "${logs[@]:0}" | sort -rn | cut -f2); do
-    echo "$log"
+  for log in $(printf "%b\n" "${logs[@]:0}" | sort -rn | cut -f2); do
+    printf "%s\n" "$log"
   done
 }
 
@@ -68,7 +57,7 @@ pruneLogs() {
   mapfile -t logs < <(sortLogs)
   ## check count and delete old logs
   if [[ "${#logs[@]}" -gt "$LOG_KEEP" ]]; then
-    logitf "Deleting OLD logs: %s\n" "${logs[@]:${LOG_KEEP}}"
+    printf "Deleting OLD logs: %s\n" "${logs[@]:${LOG_KEEP}}"
     rm -rf "${logs[@]:${LOG_KEEP}}"
   fi
 }
@@ -77,7 +66,7 @@ pruneLogs() {
 clearLock() {
   local lockFile=$1
   if [ -f "$lockFile" ]; then
-    logitf "Deleting lockfile: %s\n" "$lockFile"
+    printf "Deleting lockfile: %s\n" "$lockFile"
     rm "$lockFile"
   fi
 }
@@ -89,13 +78,13 @@ exitClean() {
   if [[ $__SKIP_COUNT -gt 0 ]]; then
     status="WARNING"
   fi
-  logMsg=$(printf "%s: Total datasets: %d Skipped: %d" "$status" "$__PAIR_COUNT" "$__SKIP_COUNT")
+  printf -v logMsg "%s: Total datasets: %d Skipped: %d" "$status" "$__PAIR_COUNT" "$__SKIP_COUNT"
   ## build and print error message
   if [[ $exitCode -ne 0 ]]; then
     status="ERROR"
-    logMsg=$(printf "%s: Operation exited unexpectedly: code=%d" "$status" "$exitCode")
+    printf -v logMsg "%s: Operation exited unexpectedly: code=%d" "$status" "$exitCode"
     if [[ -n "$extraMsg" ]]; then
-      logMsg=$(printf "%s msg=%s" "$logMsg" "$extraMsg")
+      printf -v logMsg "%s msg=%s" "$logMsg" "$extraMsg"
     fi
   fi
   ## append extra message if available
@@ -107,7 +96,7 @@ exitClean() {
   clearLock "${TMPDIR}"/.replicate.snapshot.lock
   clearLock "${TMPDIR}"/.replicate.send.lock
   ## print log message and exit
-  logit "$logMsg"
+  printf "%s\n" "$logMsg"
   exit 0
 }
 
@@ -120,17 +109,17 @@ checkLock() {
     local ps
     if ps=$(pgrep -lx -F "$lockFile"); then
       ## looks like it's still running
-      logitf "ERROR: Script is already running as: %s\n" "$ps"
+      printf "ERROR: Script is already running as: %s\n" "$ps"
     else
       ## stale lock file?
-      logitf "ERROR: Stale lockfile: %s\n" "$lockFile"
+      printf "ERROR: Stale lockfile: %s\n" "$lockFile"
     fi
     ## cleanup and exit
     exitClean 90 "confirm script is not running and delete lockfile: $lockFile"
   else
     ## well no lockfile..let's make a new one
-    logitf "Creating lockfile: %s\n" "$lockFile"
-    echo $$ > "$lockFile"
+    printf "Creating lockfile: %s\n" "$lockFile"
+    printf "%d\n" "$$" > "$lockFile"
   fi
 }
 
@@ -143,7 +132,7 @@ checkHost() {
   local host=$1 cmd
   ## substitute host
   cmd=${HOST_CHECK//%HOST%/$host}
-  logitf "Checking host %s: %s\n" "$host" "$cmd"
+  printf "Checking host %s: %s\n" "$host" "$cmd"
   ## run the check
   if ! $cmd > /dev/null 2>&1; then
     exitClean 90 "host check '$cmd' failed!"
@@ -159,7 +148,7 @@ snapDestroy() {
   if [[ -n "$host" ]]; then
     prefix="$SSH $host "
   fi
-  logitf "Deleting snapshot: %s\n" "$snap"
+  printf "Deleting snapshot: %s\n" "$snap"
   # shellcheck disable=SC2086
   $prefix$ZFS destroy $args"$snap"
 }
@@ -171,9 +160,9 @@ snapSend() {
   checkLock "${TMPDIR}/.replicate.send.lock"
   ## create initial send command based on arguments
   ## if first snap name is not empty generate an incremental
-  local args="-R"
+  local args="-Rs"
   if [ -n "$base" ]; then
-    args="-R -I $base"
+    args="-Rs -I $base"
   fi
   ## set the command prefix based on source host
   local prefix
@@ -185,7 +174,7 @@ snapSend() {
   if [[ -n "$dstHost" ]]; then
     pipe=${DEST_PIPE_WITH_HOST//%HOST%/$dstHost}
   fi
-  logitf "Sending snapshot %s@%s via %s %s\n" "$src" "$snap" "$pipe" "$dst"
+  printf "Sending snapshot %s@%s via %s %s\n" "$src" "$snap" "$pipe" "$dst"
   ## execute send and check return
   # shellcheck disable=SC2086
   if ! $prefix$ZFS send $args "${src}@${snap}" | $pipe "$dst"; then
@@ -218,7 +207,7 @@ snapList() {
   local idx
   for idx in "${!snaps[@]}"; do
     if [[ ${snaps[idx]} == *@autorep-* ]]; then
-      echo "${snaps[idx]}"
+      printf "%s\n" "${snaps[idx]}"
     fi
   done
 }
@@ -245,8 +234,8 @@ snapCreate() {
     if [[ "$ALLOW_ROOT_DATASETS" -ne 1 ]]; then
       if [ "$src" == "$(basename "$src")" ] ||
         [ "$dst" == "$(basename "$dst")" ]; then
-        logit "WARNING: Replicating root datasets can lead to data loss."
-        logitf "Set 'ALLOW_ROOT_DATASETS=1' in config or environment to disable warning. Skipping: %s\n" "$pair"
+        printf "WARNING: Replicating root datasets can lead to data loss.\n"
+        printf "Set 'ALLOW_ROOT_DATASETS=1' in config or environment to disable warning. Skipping: %s\n" "$pair"
         ((__SKIP_COUNT++)) || true
         continue
       fi
@@ -279,7 +268,7 @@ snapCreate() {
       ## while we are here...check for our current snap name
       if [[ "$snap" == "${src}@${name}" ]]; then
         ## looks like it's here...we better kill it
-        logitf "Destroying DUPLICATE snapshot: %s@%s\n" "$src" "$name"
+        printf "Destroying DUPLICATE snapshot: %s@%s\n" "$src" "$name"
         snapDestroy "${src}@${name}" "$srcHost"
       fi
     done
@@ -304,8 +293,8 @@ snapCreate() {
       done
       ## no matching base, are we allowed to fallback?
       if [[ -z "$base" ]] && [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
-        logitf "WARNING: Unable to find base snapshot '%s' in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
-        logitf "Set 'ALLOW_RECONCILIATION=1' to fallback to a full send. Skipping: %s\n" "$pair"
+        printf "WARNING: Unable to find base snapshot '%s' in destination dataset: %s" "${srcSnaps[-1]}" "$dst"
+        printf "Set 'ALLOW_RECONCILIATION=1' to fallback to a full send. Skipping: %s\n" "$pair"
         ((__SKIP_COUNT++)) || true
         continue
       fi
@@ -314,13 +303,13 @@ snapCreate() {
     if [[ -z "$base" ]] && [[ ${#dstSnaps[@]} -gt 0 ]]; then
       ## allowed to prune remote dataset?
       if [[ $ALLOW_RECONCILIATION -ne 1 ]]; then
-        logit "WARNING: Destination contains snapshots not in source."
-        logitf "Set 'ALLOW_RECONCILIATION=1' to remove destination snapshots. Skipping: %s\n" "$pair"
+        printf "WARNING: Destination contains snapshots not in source.\n"
+        printf "Set 'ALLOW_RECONCILIATION=1' to remove destination snapshots. Skipping: %s\n" "$pair"
         ((__SKIP_COUNT++)) || true
         continue
       fi
       ## prune destination snapshots
-      logitf "Pruning destination snapshots: %s\n" "${dstSnaps[@]}"
+      printf "Pruning destination snapshots: %s\n" "${dstSnaps[@]}"
       for snap in "${dstSnaps[@]}"; do
         snapDestroy "$snap" "$dstHost"
       done
@@ -330,7 +319,7 @@ snapCreate() {
     for idx in "${!srcSnaps[@]}"; do
       if [[ ${#srcSnaps[@]} -ge $SNAP_KEEP ]]; then
         ## snaps are sorted above by creation in ascending order
-        logitf "Found OLD snapshot: %s\n" "${srcSnaps[idx]}"
+        printf "Found OLD snapshot: %s\n" "${srcSnaps[idx]}"
         snapDestroy "${srcSnaps[idx]}" "$srcHost"
         unset 'srcSnaps[idx]'
       fi
@@ -346,7 +335,7 @@ snapCreate() {
       args="-r "
     fi
     ## come on already...make that snapshot
-    logitf "Creating source snapshot: %s@%s\n" "$src" "$name"
+    printf "Creating source snapshot: %s@%s\n" "$src" "$name"
     # shellcheck disable=SC2086
     if ! $prefix$ZFS snapshot $args$src@$name; then
       exitClean 20 "failed to create snapshot: ${src}@${name}"
@@ -368,7 +357,7 @@ subTags() {
   m=${m//%CYR%/${DATE_MACROS[CYR]}}
   m=${m//%NOW%/${DATE_MACROS[NOW]}}
   m=${m//%TAG%/$TAG}
-  echo "$m"
+  printf "%s\n" "$m"
 }
 
 ## dump latest log to stdout and exit
@@ -432,15 +421,15 @@ loadConfig() {
   [[ -z "$configFile" ]] && configFile=$1
   ## attempt to load configuration
   if [[ -f "$configFile" ]]; then
-    logitf "Sourcing config file: %s\n" "$configFile"
+    printf "Sourcing config file: %s\n" "$configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   elif configFile="$(dirname "${BASH_SOURCE[0]}")/config.sh" && [[ -f "$configFile" ]]; then
-    logitf "Sourcing config file: %s\n" "$configFile"
+    printf "Sourcing config file: %s\n" "$configFile"
     # shellcheck disable=SC1090
     source "$configFile"
   else
-    logit "Loading configuration from defaults and environmental settings."
+    printf "Loading configuration from defaults and environmental settings.\n"
   fi
   declare -A DATE_MACROS=(
     ["DOW"]=$(date "+%a") ["DOM"]=$(date "+%d") ["MOY"]=$(date "+%m")
@@ -493,8 +482,6 @@ loadConfig() {
 
 ## it all starts here...
 main() {
-  ## load configuration
-  loadConfig "$@"
   ## do snapshots and send
   snapCreate
   ## that's it, sending is called from doSnap
@@ -502,4 +489,4 @@ main() {
 }
 
 ## start main if we weren't sourced
-[[ "$0" == "${BASH_SOURCE[0]}" ]] && main "$@"
+[[ "$0" == "${BASH_SOURCE[0]}" ]] && loadConfig "$@" && main 2>&1 | writeLog
