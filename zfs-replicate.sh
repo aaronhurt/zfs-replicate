@@ -41,14 +41,14 @@ pruneLogs() {
   ## check count and delete old logs
   if [[ "${#logs[@]}" -gt "$LOG_KEEP" ]]; then
     printf "pruning logs %s\n" "${logs[*]:${LOG_KEEP}}"
-    rm -rf "${logs[@]:${LOG_KEEP}}"
+    rm -f "${logs[@]:${LOG_KEEP}}"
   fi
 }
 
 ## delete lock files
 clearLock() {
   local lockFile=$1
-  if [ -f "$lockFile" ]; then
+  if [[ -f "$lockFile" ]]; then
     printf "deleting lockfile %s\n" "$lockFile"
     rm "$lockFile"
   fi
@@ -92,18 +92,17 @@ checkLock() {
     local ps
     if ps=$(pgrep -lx -F "$lockFile"); then
       ## looks like it's still running
-      printf "ERROR: script is already running as: %s\n" "$ps"
+      printf "ERROR: script is already running as: %d\n" "$ps"
     else
       ## stale lock file?
       printf "ERROR: stale lockfile %s\n" "$lockFile"
     fi
     ## cleanup and exit
     exitClean 128 "confirm script is not running and delete lockfile $lockFile"
-  else
-    ## well no lockfile..let's make a new one
-    printf "creating lockfile %s\n" "$lockFile"
-    printf "%d\n" "$$" > "$lockFile"
   fi
+  ## well no lockfile..let's make a new one
+  printf "creating lockfile %s\n" "$lockFile"
+  printf "%d\n" "$$" > "$lockFile"
 }
 
 ## check remote host status
@@ -275,7 +274,7 @@ snapCreate() {
       fi
     done
     ## set our base snap for incremental generation if src contains a sufficient
-    ## number of snapshots and the base source snapshot exists in destination data set.
+    ## number of snapshots and the base source snapshot exists in destination dataset
     local base
     if [[ ${#srcSnaps[@]} -ge 1 ]]; then
       ## set source snap base candidate
@@ -284,7 +283,7 @@ snapCreate() {
       read -r -a tempa <<< "${ss//@/ }"
       sn="${tempa[1]}"
       sn="${sn%"${sn##*[![:space:]]}"}"
-      ## loop over base snaps and check for a match
+      ## loop over destination snaps and check for a match
       for snap in "${dstSnaps[@]}"; do
         read -r -a tempa <<< "${snap//@/ }"
         dn="${tempa[1]}"
@@ -327,7 +326,7 @@ snapCreate() {
         unset 'srcSnaps[idx]'
       fi
     done
-    ## come on already...make that snapshot
+    ## come on already...take that snapshot
     if [[ -n "$srcHost" ]]; then
       read -r -a cmd <<< "$SSH"
       cmd+=("$srcHost")
@@ -392,7 +391,7 @@ showStatus() {
   if [[ -n "${logs[0]}" ]]; then
     printf "Last output from %s:\n%s\n" "$SCRIPT" "$(cat "${logs[0]}")"
   else
-    printf "Unable to find most recent log file, cannot print status."
+    printf "Unable to find most recent log file, cannot print status.\n"
   fi
   exit 0
 }
