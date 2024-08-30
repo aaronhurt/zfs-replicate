@@ -9,7 +9,7 @@ set -eu
 _fakeZFS() {
   cmd=$1
 
-  for arg in $@; do
+  for arg in "$@"; do
     target=$arg
   done
 

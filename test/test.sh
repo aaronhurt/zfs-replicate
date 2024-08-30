@@ -7,7 +7,6 @@ set -eu ## fail on errors and undefined variabels
 (set -o pipefail 2> /dev/null) && set -o pipefail
 
 ## set self identification values
-SCRIPT="${0##*/}"
 SCRIPT_PATH="${0%/*}"
 
 ## check line against match and exit on failure
@@ -36,12 +35,13 @@ _testZFSReplicate() {
   REPLICATE_SETS="${REPLICATE_SETS} srcPool4/srcFS4@srcHost4:dstPool4/dstFS4@dstHost4"
 
   ## source script functions
+  # shellcheck source=/dev/null
   . ../zfs-replicate.sh
 
   ## test loadConfig
   (
     printf "_testSimpleSetNoConfig/loadConfig\n"
-    loadConfig | awk '{ print NR-1, $0 }' | while read idx line; do
+    loadConfig | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
         0)
@@ -54,9 +54,9 @@ _testZFSReplicate() {
 
   ## test snapCreate
   (
-    loadConfig 2>&1 > /dev/null
+    loadConfig > /dev/null 2>&1
     printf "_testSimpleSetNoConfig/snapCreate\n"
-    snapCreate | awk '{ print NR-1, $0 }' | while read idx line; do
+    snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -192,9 +192,9 @@ _testZFSReplicate() {
 
   ## test exitClean
   (
+    loadConfig > /dev/null 2>&1
     printf "_testSimpleSetNoConfig/exitClean\n"
-    exitOut=$(exitClean 0 "test message")
-    echo "$exitOut" | awk '{ print NR-1, $0 }' | while read idx line; do
+    exitClean 0 "test message" | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
         0)

@@ -16,7 +16,7 @@ _fakeSSH() {
       ./zfs.sh "$@"
       ;;
     *)
-      printf "ssh %s\n" "$(printf "%s\n" "$@" | tr "\n" " ")"
+      printf "ssh $host $cmd %s\n" "$(printf "%s\n" "$@" | tr "\n" " ")"
       ;;
   esac
   return 0
