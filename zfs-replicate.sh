@@ -34,10 +34,10 @@ TAG="${TAG:-"%MOY%%DOM%%CYR%_%NOW%"}"
 LOG_FILE="${LOG_FILE:-"autorep-%TAG%.log"}"
 LOG_KEEP="${LOG_KEEP:-5}"
 LOG_BASE=${LOG_BASE:-""} ## default empty
-LOGGER="${LOGGER:-$(which logger)}"
-FIND="${FIND:-$(which find)}"
-SSH="${SSH:-$(which ssh)}"
-ZFS="${ZFS:-$(which zfs)}"
+LOGGER="${LOGGER:-$(which logger || true)}"
+FIND="${FIND:-$(which find || true)}"
+SSH="${SSH:-$(which ssh || true)}"
+ZFS="${ZFS:-$(which zfs || true)}"
 DEST_PIPE_WITH_HOST="${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}"
 DEST_PIPE_WITHOUT_HOST="${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}"
 HOST_CHECK="${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}"
@@ -398,7 +398,7 @@ writeLog() {
   ## always print to stdout and copy to logfile if set
   printf "%s %s[%d]: %s\n" "$(date '+%b %d %T')" "$SCRIPT" "$$" "$line" | tee -a "$logf"
   ## if syslog has been enabled write to syslog via logger
-  if [ -n "$SYSLOG" ] && [ "$SYSLOG" -eq 1 ] && [ -n "$LOGGER" ]; then
+  if [ "$SYSLOG" -eq 1 ] && [ -n "$LOGGER" ]; then
     $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"
   fi
 }
@@ -510,14 +510,23 @@ loadConfig() {
   if [ -n "$LOG_BASE" ] && [ ! -d "$LOG_BASE" ]; then
     mkdir -p "$LOG_BASE"
   fi
+  if [ "$SYSLOG" -eq 1 ] && [ -z "$LOGGER" ]; then
+    writeLog "ERROR: unable to locate system logger binary and SYSLOG is enabled" && exit 1
+  fi
   if [ -z "$REPLICATE_SETS" ]; then
     writeLog "ERROR: missing required setting REPLICATE_SETS" && exit 1
   fi
-  if [ -z "$ZFS" ]; then
-    writeLog "ERROR: unable to locate system zfs binary" && exit 1
-  fi
   if [ "$SNAP_KEEP" -lt 2 ]; then
     writeLog "ERROR: a minimum of 2 snapshots are required for incremental sending" && exit 1
+  fi
+  if [ -z "$FIND" ]; then
+    writeLog "ERROR: unable to locate system find binary" && exit 1
+  fi
+  if [ -z "$SSH" ]; then
+    writeLog "ERROR: unable to locate system ssh binary" && exit 1
+  fi
+  if [ -z "$ZFS" ]; then
+    writeLog "ERROR: unable to locate system zfs binary" && exit 1
   fi
   ## show status if toggled
   if [ "$status" -eq 1 ]; then
@@ -535,6 +544,6 @@ main() {
 
 ## process config and start main if we weren't sourced
 if [ "$SCRIPT" != "sh" ] && [ "$SCRIPT" != "dash" ] && [ "$SCRIPT" != "-bash" ] &&
-  [ $(expr "$SCRIPT" : 'zfs-replicate') -gt 0 ]; then
+  [ "$(expr "$SCRIPT" : 'zfs-replicate')" -gt 0 ]; then
   loadConfig "$@" && main 2>&1 | captureOutput
 fi
