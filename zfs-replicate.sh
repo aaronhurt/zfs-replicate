@@ -77,9 +77,9 @@ pruneLogs() {
     logCount=$(printf "%s" "$logs" | wc -l)
   fi
   if [ "$logCount" -gt "$LOG_KEEP" ]; then
-    prune="$(echo "$logs" | sed -n "$((LOG_KEEP + 1)),\$p")"
+    prune="$(printf "%s\n" "$logs" | sed -n "$((LOG_KEEP + 1)),\$p")"
     printf "pruning %d logs\n" "$((logCount - LOG_KEEP + 1))"
-    echo "$prune" | xargs rm -vf
+    printf "%s\n" "$prune" | xargs rm -vf
   fi
 }
 
@@ -151,7 +151,7 @@ checkHost() {
     return
   fi
   host=$1
-  cmd=$(echo "$HOST_CHECK" | sed "s/%HOST%/$host/g")
+  cmd=$(printf "%s\n" "$HOST_CHECK" | sed "s/%HOST%/$host/g")
   printf "checking host cmd=%s\n" "$cmd"
   ## run the check
   if ! $cmd > /dev/null 2>&1; then
@@ -220,7 +220,7 @@ snapSend() {
   ## set destination pipe based on destination host
   pipe="$DEST_PIPE_WITHOUT_HOST"
   if [ -n "$dstHost" ]; then
-    pipe=$(echo "$DEST_PIPE_WITH_HOST" | sed "s/%HOST%/$dstHost/g")
+    pipe=$(printf "%s\n" "$DEST_PIPE_WITH_HOST" | sed "s/%HOST%/$dstHost/g")
   fi
   pipe="$pipe $dst"
   printf "sending snapshot cmd=%s | %s\n" "$cmd" "$pipe"
@@ -253,7 +253,7 @@ snapList() {
     exitClean 128 "failed to list snapshots for dataset: $set"
   fi
   ## filter snaps matching our pattern
-  echo "$snaps" | grep "@autorep-" || true
+  printf "%s\n" "$snaps" | grep "@autorep-" || true
 }
 
 ## create and manage source snapshots
@@ -266,8 +266,8 @@ snapCreate() {
   for pair in $REPLICATE_SETS; do
     __PAIR_COUNT=$((__PAIR_COUNT + 1))
     ## split dataset into source and destination parts and trim any trailing space
-    src=$(echo "$pair" | cut -f1 -d: | sed 's/[[:space:]]*$//')
-    dst=$(echo "$pair" | cut -f2 -d: | sed 's/[[:space:]]*$//')
+    src=$(printf "%s\n" "$pair" | cut -f1 -d: | sed 's/[[:space:]]*$//')
+    dst=$(printf "%s\n" "$pair" | cut -f2 -d: | sed 's/[[:space:]]*$//')
     ## check for root dataset destination
     if [ "$ALLOW_ROOT_DATASETS" -ne 1 ]; then
       if [ "$dst" = "$(basename "$dst")" ] || [ "$dst" = "$(basename "$dst")/" ]; then
@@ -282,15 +282,15 @@ snapCreate() {
     dstHost=""
     ## look for host options on source and check host if found
     if [ "${src#*"@"}" != "$src" ]; then
-      srcHost=$(echo "$src" | cut -f2 -d@)
+      srcHost=$(printf "%s\n" "$src" | cut -f2 -d@)
       checkHost "$srcHost"
-      src=$(echo "$src" | cut -f1 -d@)
+      src=$(printf "%s\n" "$src" | cut -f1 -d@)
     fi
     ## look for host options on destination and check host if found
     if [ "${dst#*"@"}" != "$dst" ]; then
-      dstHost=$(echo "$dst" | cut -f2 -d@)
+      dstHost=$(printf "%s\n" "$dst" | cut -f2 -d@)
       checkHost "$dstHost"
-      dst=$(echo "$dst" | cut -f1 -d@)
+      dst=$(printf "%s\n" "$dst" | cut -f1 -d@)
     fi
     ## check source and destination datasets
     checkDataset "$src" "$srcHost"
@@ -322,10 +322,10 @@ snapCreate() {
       ## get most recent source snapshot
       ss=$(printf "%s\n" "$srcSnaps" | tail -n 1)
       ## get source snapshot name
-      sn=$(echo "$ss" | cut -f2 -d@)
+      sn=$(printf "%s\n" "$ss" | cut -f2 -d@)
       ## loop over destinations snaps and look for a match
       for ds in $dstSnaps; do
-        dn=$(echo "$ds" | cut -f2 -d@)
+        dn=$(printf "%s\n" "$ds" | cut -f2 -d@)
         if [ "$dn" = "$sn" ]; then
           base="$ss"
           break
@@ -358,7 +358,7 @@ snapCreate() {
     ## cleanup old snapshots
     if [ "$srcSnapCount" -ge "$SNAP_KEEP" ]; then
       ## snaps are sorted above by creation in ascending order
-      echo "$srcSnaps" | sed -n "1,$((srcSnapCount - SNAP_KEEP))p" | while read -r snap; do
+      printf "%s\n" "$srcSnaps" | sed -n "1,$((srcSnapCount - SNAP_KEEP))p" | while read -r snap; do
         printf "found old snapshot %s\n" "$snap"
         snapDestroy "$snap" "$srcHost"
       done
@@ -414,12 +414,12 @@ captureOutput() {
 subTags() {
   m=$1
   ## do the substitutions
-  m=$(echo "$m" | sed "s/%DOW%/${__DOW}/g")
-  m=$(echo "$m" | sed "s/%DOM%/${__DOM}/g")
-  m=$(echo "$m" | sed "s/%MOY%/${__MOY}/g")
-  m=$(echo "$m" | sed "s/%CYR%/${__CYR}/g")
-  m=$(echo "$m" | sed "s/%NOW%/${__NOW}/g")
-  m=$(echo "$m" | sed "s/%TAG%/${TAG}/g")
+  m=$(printf "%s\n" "$m" | sed "s/%DOW%/${__DOW}/g")
+  m=$(printf "%s\n" "$m" | sed "s/%DOM%/${__DOM}/g")
+  m=$(printf "%s\n" "$m" | sed "s/%MOY%/${__MOY}/g")
+  m=$(printf "%s\n" "$m" | sed "s/%CYR%/${__CYR}/g")
+  m=$(printf "%s\n" "$m" | sed "s/%NOW%/${__NOW}/g")
+  m=$(printf "%s\n" "$m" | sed "s/%TAG%/${TAG}/g")
   printf "%s\n" "$m"
 }
 
@@ -427,11 +427,10 @@ subTags() {
 showStatus() {
   log=$(sortLogs | head -n 1)
   if [ -n "$log" ]; then
-    printf "Last output from %s:\n%s\n" "$SCRIPT" "$(cat "${log}")"
-  else
-    printf "Unable to find most recent log file, cannot print status.\n"
+    printf "%s" "$(cat "${log}")" && exit 0
   fi
-  exit 0
+  ## not found, log error and exit
+  writeLog "ERROR: unable to find most recent log file, cannot print status" && exit 1
 }
 
 ## show usage and exit
@@ -453,43 +452,34 @@ loadConfig() {
   TAG="$(subTags "$TAG")"
   LOG_FILE="$(subTags "$LOG_FILE")"
   ## process command-line options
-  opt=${1:-""} optArg=${2:-""}
   while [ $# -gt 0 ]; do
-    case "$opt" in
-      -c | --config)
-        configFile="$optArg"
-        shift
-        ;;
-      -s | --status)
-        showStatus
-        ;;
-      -h | --help)
-        showHelp
-        ;;
-      *)
-        ## check for config file for backwards compatibility
-        if [ -z "$configFile" ] && [ -f "$opt" ]; then
-          configFile="$opt"
-          shift
-          continue
-        fi
-        ## nothing left, error out
-        writeLog "ERROR: illegal option ${1}" && exit 1
-        ;;
-    esac
-    shift
+    if [ "$1" = "-c" ] || [ "$1" = "--config" ]; then
+      shift
+      configFile="$1"
+      shift
+      continue
+    fi
+    if [ "$1" = "-s" ] || [ "$1" = "--status" ]; then
+      status=1
+      shift
+      continue
+    fi
+    ## unknown option - check for config file for backwards compatibility
+    if [ -z "$configFile" ] && [ -f "$1" ]; then
+      configFile="$1"
+      shift
+      continue
+    fi
+    ## nothing left, error out
+    writeLog "ERROR: illegal option ${1}" && exit 1
   done
   ## attempt to load configuration
   if [ -f "$configFile" ]; then
-    writeLog "sourcing config file $configFile"
     # shellcheck disable=SC1090
     . "$configFile"
   elif configFile="${SCRIPT_PATH}/config.sh" && [ -f "$configFile" ]; then
-    writeLog "sourcing config file $configFile"
     # shellcheck disable=SC1090
     . "$configFile"
-  else
-    writeLog "loading configuration from defaults and environmental settings."
   fi
   ## perform final substitution
   TAG="$(subTags "$TAG")"
@@ -518,6 +508,14 @@ loadConfig() {
   if [ -n "$LOG_BASE" ] && [ ! -d "$LOG_BASE" ]; then
     mkdir -p "$LOG_BASE"
   fi
+  if [ -z "$FIND" ]; then
+    writeLog "ERROR: unable to locate system find binary" && exit 1
+  fi
+  ## we have all we need for status
+  if [ "$status" -eq 1 ]; then
+    showStatus
+  fi
+  ## continue validating config
   if [ "$SYSLOG" -eq 1 ] && [ -z "$LOGGER" ]; then
     writeLog "ERROR: unable to locate system logger binary and SYSLOG is enabled" && exit 1
   fi
@@ -527,18 +525,11 @@ loadConfig() {
   if [ "$SNAP_KEEP" -lt 2 ]; then
     writeLog "ERROR: a minimum of 2 snapshots are required for incremental sending" && exit 1
   fi
-  if [ -z "$FIND" ]; then
-    writeLog "ERROR: unable to locate system find binary" && exit 1
-  fi
   if [ -z "$SSH" ]; then
     writeLog "ERROR: unable to locate system ssh binary" && exit 1
   fi
   if [ -z "$ZFS" ]; then
     writeLog "ERROR: unable to locate system zfs binary" && exit 1
-  fi
-  ## show status if toggled
-  if [ "$status" -eq 1 ]; then
-    showStatus
   fi
 }
 

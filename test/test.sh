@@ -12,6 +12,10 @@ SCRIPT_PATH="${0%/*}"
 ## check line against match and exit on failure
 _fail() {
   local line=$1 match=$2
+  ## hack to match blank lines
+  if [ "$match" = "null" ] && [ -n "$line" ]; then
+    printf "FAILED '%s' != ''\n" "$line" && exit 1
+  fi
   case "$line" in
     *"$match"*) ;;
     *) printf "FAILED '%s' != '*%s*'\n" "$line" "$match" && exit 1 ;;
@@ -44,9 +48,8 @@ _testZFSReplicate() {
     loadConfig | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
-        0)
-          match="loading configuration from defaults"
-          _fail "$line" "$match"
+        *)
+          _fail "$line" "null"
           ;;
       esac
     done
