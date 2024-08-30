@@ -1,9 +1,10 @@
 # zfs-replicate
 
-A Bash script to automate ZFS Replication.
+A POSIX shell script to automate ZFS Replication.
 
 ## Features
 
+- The script follows strict POSIX standards and should be usable on any host with a POSIX compliant shell.
 - Source pools and datasets are always authoritative, the script will always defer to the source.
 - Supports push and pull replication with local and remote datasets.
 - Supports multiple pool/dataset pairs to replicate.
@@ -12,11 +13,10 @@ A Bash script to automate ZFS Replication.
 - Includes a well documented `config.sh` file that may be used as configuration or as reference for environment
   variables passed to the script.
 - May be run on any schedule using cron or similar mechanism.
-- May be sourced and/or leveraged by/in other Bash scripts.
-- Test coverage of core functions via mocks in the test.sh script.
+- Fully source compliant and may be used by other scripts.
+- Test coverage of core functions via mocks in the test/test.sh script.
 - Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
-
 
 ## Experimental POSIX Support
 
@@ -62,17 +62,17 @@ is not met.
 ```text
 Usage: ./zfs-replicate.sh [options] [config]
 
-Bash script to automate ZFS Replication
+POSIX shell script to automate ZFS Replication
 
 Options:
-  -c, --config <configFile>    bash configuration file
+  -c, --config <configFile>    configuration file
   -s, --status                 print most recent log messages to stdout
   -h, --help                   show this message
 ```
 
 ### Config File and Environment Variable Reference
 
-```bash
+```sh
 #!/usr/bin/env sh
 ## zfs-replicate configuration file
 # shellcheck disable=SC2034
@@ -218,17 +218,17 @@ Options:
 ##
 #FIND=$(which find)
 
-## Path to the system "zfs" binary. The default uses the first "zfs"
-## executable found in $PATH.
-##
-#ZFS=$(which zfs)
-
 ## Path to the system "ssh" binary. You may also include custom arguments
 ## to SSH here or in the "DEST_PIPE_WITH_HOST" option above.
 ## Example: SSH="ssh -l root" to login as root to target host.
 ## The default uses the first "ssh" executable found in $PATH.
 ##
 #SSH=$(which ssh)
+
+## Path to the system "zfs" binary. The default uses the first "zfs"
+## executable found in $PATH.
+##
+#ZFS=$(which zfs)
 
 ## Set the pipe to the destination pool. But DO NOT INCLUDE the pipe (|)
 ## character in this setting. Filesystem  names from the source will be

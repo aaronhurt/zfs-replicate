@@ -143,17 +143,17 @@
 ##
 #FIND=$(which find)
 
-## Path to the system "zfs" binary. The default uses the first "zfs"
-## executable found in $PATH.
-##
-#ZFS=$(which zfs)
-
 ## Path to the system "ssh" binary. You may also include custom arguments
 ## to SSH here or in the "DEST_PIPE_WITH_HOST" option above.
 ## Example: SSH="ssh -l root" to login as root to target host.
 ## The default uses the first "ssh" executable found in $PATH.
 ##
 #SSH=$(which ssh)
+
+## Path to the system "zfs" binary. The default uses the first "zfs"
+## executable found in $PATH.
+##
+#ZFS=$(which zfs)
 
 ## Set the pipe to the destination pool. But DO NOT INCLUDE the pipe (|)
 ## character in this setting. Filesystem  names from the source will be

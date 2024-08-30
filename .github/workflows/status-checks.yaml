@@ -76,6 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash ./test-bash.sh
+      - run: cd test && ./test.sh
         env:
           TMPDIR: ${{ runner.temp }}
