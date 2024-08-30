@@ -1,6 +1,6 @@
 #!/usr/bin/env dash
 ## test.sh contains zfs-replicate test cases
-set -eu ## fail on errors and undefined variabels
+set -eu ## fail on errors and undefined variables
 
 # check pipefail in a subshell and set if supported
 # shellcheck disable=SC3040
