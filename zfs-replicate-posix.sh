@@ -1,10 +1,49 @@
 #!/usr/bin/env sh
 ## zfs-replicate.sh
-set -e
+set -eu
 
-############################################
-##### warning gremlins live below here #####
-############################################
+# check pipefail in a subshell and set if supported
+# shellcheck disable=SC3040
+(set -o pipefail 2> /dev/null) && set -o pipefail
+
+## set date substitutions for macros
+__DOW=$(date "+%a")
+readonly __DOW
+__DOM=$(date "+%d")
+readonly __DOM
+__MOY=$(date "+%m")
+readonly __MOY
+__CYR=$(date "+%Y")
+readonly __CYR
+__NOW=$(date "+%s")
+readonly __NOW
+
+## init configuration with values from environment or set defaults
+REPLICATE_SETS=${REPLICATE_SETS:-""} ## default empty
+ALLOW_ROOT_DATASETS="${ALLOW_ROOT_DATASETS:-0}"
+ALLOW_RECONCILIATION="${ALLOW_RECONCILIATION:-0}"
+RECURSE_CHILDREN="${RECURSE_CHILDREN:-0}"
+SNAP_KEEP="${SNAP_KEEP:-2}"
+SYSLOG="${SYSLOG:-1}"
+SYSLOG_FACILITY="${SYSLOG_FACILITY:-"user"}"
+TAG="${TAG:-"%MOY%%DOM%%CYR%_%NOW%"}"
+LOG_FILE="${LOG_FILE:-"autorep-%TAG%.log"}"
+LOG_KEEP="${LOG_KEEP:-5}"
+LOG_BASE=${LOG_BASE:-""} ## default empty
+LOGGER="${LOGGER:-$(which logger)}"
+FIND="${FIND:-$(which find)}"
+ZFS="${ZFS:-$(which zfs)}"
+SSH="${SSH:-$(which ssh)}"
+DEST_PIPE_WITH_HOST="${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}"
+DEST_PIPE_WITHOUT_HOST="${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}"
+HOST_CHECK="${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}"
+
+## temp path used for lock files
+TMPDIR="${TMPDIR:-"/tmp"}"
+
+## init values used in snapCreate and exitClean
+__PAIR_COUNT=0
+__SKIP_COUNT=0
 
 ## output log files in decreasing age order
 sortLogs() {
@@ -52,7 +91,7 @@ clearLock() {
 ## exit and cleanup
 exitClean() {
   exitCode=${1:-0}
-  extraMsg=$2
+  extraMsg=${2:-""}
   status="success"
   ## set status to warning if we skipped any datasets
   if [ "$__SKIP_COUNT" -gt 0 ]; then
@@ -213,16 +252,6 @@ snapList() {
   echo "$snaps" | grep "@autorep-" || true
 }
 
-## helper function to check if substring is within string
-contains() {
-  string="$1"
-  substring="$2"
-  if [ "${string#*"$substring"}" != "$string" ]; then
-    return 0
-  fi
-  return 1
-}
-
 ## create and manage source snapshots
 snapCreate() {
   ## make sure we aren't ever creating simultaneous snapshots
@@ -244,15 +273,16 @@ snapCreate() {
         continue
       fi
     fi
+    ## init source and destination host in each loop iteration
     srcHost=""
     dstHost=""
     ## look for host options on source
-    if contains "$src" "@"; then
+    if [ "${src#*"@"}" != "$src" ]; then
       srcHost=$(echo "$src" | cut -f2 -d@)
       src=$(echo "$src" | cut -f1 -d@)
     fi
     ## look for host options on destination
-    if contains "$dst" "@"; then
+    if [ "${dst#*"@"}" != "$dst" ]; then
       dstHost=$(echo "$dst" | cut -f2 -d@)
       dst=$(echo "$dst" | cut -f1 -d@)
     fi
@@ -408,13 +438,16 @@ showHelp() {
   exit 0
 }
 
-## read and load config file
+## read config file if present, process flags, validate, and lock config variables
 loadConfig() {
   ## set SCRIPT used by writeLog and showStatus
   readonly SCRIPT="${0##*/}"
   readonly SCRIPT_PATH="${0%/*}"
   configFile=""
   status=0
+  ## sub macros for logging
+  TAG="$(subTags "$TAG")"
+  LOG_FILE="$(subTags "$LOG_FILE")"
   ## process command-line options
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -446,44 +479,29 @@ loadConfig() {
   else
     writeLog "loading configuration from defaults and environmental settings."
   fi
-  ## set date substitutions for macros
-  __DOW=$(date "+%a")
-  readonly __DOW
-  __DOM=$(date "+%d")
-  readonly __DOM
-  __MOY=$(date "+%m")
-  readonly __MOY
-  __CYR=$(date "+%Y")
-  readonly __CYR
-  __NOW=$(date "+%s")
-  readonly __NOW
-  ## complete configuration with values from environment or set defaults
-  readonly TMPDIR="${TMPDIR:-"/tmp"}"
-  readonly REPLICATE_SETS ## no default value
-  readonly ALLOW_ROOT_DATASETS="${ALLOW_ROOT_DATASETS:-0}"
-  readonly ALLOW_RECONCILIATION="${ALLOW_RECONCILIATION:-0}"
-  readonly RECURSE_CHILDREN="${RECURSE_CHILDREN:-0}"
-  readonly SNAP_KEEP="${SNAP_KEEP:-2}"
-  readonly SYSLOG="${SYSLOG:-1}"
-  readonly SYSLOG_FACILITY="${SYSLOG_FACILITY:-"user"}"
-  TAG="${TAG:-"%MOY%%DOM%%CYR%_%NOW%"}"
+  ## perform final substitution
   TAG="$(subTags "$TAG")"
-  readonly TAG
-  LOG_FILE="${LOG_FILE:-"autorep-%TAG%.log"}"
   LOG_FILE="$(subTags "$LOG_FILE")"
+  ## lock configuration
+  readonly REPLICATE_SETS
+  readonly ALLOW_ROOT_DATASETS
+  readonly ALLOW_RECONCILIATION
+  readonly RECURSE_CHILDREN
+  readonly SNAP_KEEP
+  readonly SYSLOG
+  readonly SYSLOG_FACILITY
+  readonly TAG
   readonly LOG_FILE
-  readonly LOG_KEEP="${LOG_KEEP:-5}"
-  readonly LOG_BASE ## no default value
-  readonly LOGGER="${LOGGER:-$(which logger)}"
-  readonly FIND="${FIND:-$(which find)}"
-  readonly ZFS="${ZFS:-$(which zfs)}"
-  readonly SSH="${SSH:-$(which ssh)}"
-  readonly DEST_PIPE_WITH_HOST="${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}"
-  readonly DEST_PIPE_WITHOUT_HOST="${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}"
-  readonly HOST_CHECK="${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}"
-  ## init values used in snapCreate and exitClean
-  __PAIR_COUNT=0
-  __SKIP_COUNT=0
+  readonly LOG_KEEP
+  readonly LOG_BASE
+  readonly LOGGER
+  readonly FIND
+  readonly ZFS
+  readonly SSH
+  readonly DEST_PIPE_WITH_HOST
+  readonly DEST_PIPE_WITHOUT_HOST
+  readonly HOST_CHECK
+  readonly TMPDIR
   ## check configuration
   if [ -n "$LOG_BASE" ] && [ ! -d "$LOG_BASE" ]; then
     mkdir -p "$LOG_BASE"
@@ -503,6 +521,7 @@ loadConfig() {
   fi
 }
 
+## main function, not much here
 main() {
   ## do snapshots and send
   snapCreate
