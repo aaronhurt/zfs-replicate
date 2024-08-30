@@ -52,7 +52,8 @@ _testSimpleSetNoConfig() {
   local configOut snapOut exitOut line idx match
 
   ## source script and run test
-  . ./zfs-replicate.sh || true
+  # shellcheck source=/dev/null
+  . zfs-replicate.sh || true
 
   ## test loadConfig
   printf "_testSimpleSetNoConfig/loadConfig\n"
@@ -62,6 +63,9 @@ _testSimpleSetNoConfig() {
   match="loading configuration from defaults"
   [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
 
+  ## init test environment
+  loadConfig > /dev/null 2>&1
+
   ## test snapCreate
   printf "_testSimpleSetNoConfig/snapCreate\n"
   mapfile -t snapOut < <(snapCreate)
@@ -69,6 +73,10 @@ _testSimpleSetNoConfig() {
     line="${snapOut[idx]}"
     printf "%d %s\n" "$idx" "$line"
     case $idx in
+      0)
+        match="creating lockfile ${TMPDIR}/.replicate.snapshot.lock"
+        [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
+        ;;
       1)
         match="cmd=_fakeZFS list -H -o name srcPool/srcFS"
         [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
@@ -85,17 +93,25 @@ _testSimpleSetNoConfig() {
         match="cmd=_fakeZFS destroy srcPool/srcFS@autorep-test2"
         [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
         ;;
-      14)
-        match="cmd=_fakeZFS destroy srcPool/srcFS@autorep-test3"
-        [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
-        ;;
-      15)
+      13)
         match="cmd=_fakeZFS snapshot srcPool/srcFS@autorep-"
         [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
         ;;
-      17)
-        match="cmd=_fakeZFS send -Rs -I srcPool/srcFS@autorep-test3 srcPool/srcFS@autorep- | "
+      15)
+        match="cmd=_fakeZFS send -Rs -I srcPool/srcFS@autorep-test3 srcPool/srcFS@autorep-${TAG} | "
         match+="echo receive -vFd dstPool/dstFS"
+        [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
+        ;;
+      16)
+        match="receive -vFd dstPool/dstFS"
+        [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
+        ;;
+      17)
+        match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
+        [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
+        ;;
+      18)
+        match="deleting lockfile ${TMPDIR}/.replicate.snapshot.lock"
         [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
         ;;
     esac
@@ -108,12 +124,8 @@ _testSimpleSetNoConfig() {
     line="${exitOut[idx]}"
     printf "%d %s\n" "$idx" "$line"
     case $idx in
-      0)
-        match="deleting lockfile "
-        [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
-        ;;
-      1)
-        match="success total sets 0 skipped 0: test message" ## bug in test
+      10)
+        match="success total sets 0 skipped 0: test message"
         [[ ! "$line" == *"$match"* ]] && _fail "$line" "$match"
         ;;
     esac

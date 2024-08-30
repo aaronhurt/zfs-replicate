@@ -346,7 +346,7 @@ snapCreate() {
     snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
   done
   ## clear our lockfile
-  clearLock "${TMPDIR}/.snapshot.lock"
+  clearLock "${TMPDIR}/.replicate.snapshot.lock"
 }
 
 ## handle logging to file or syslog
