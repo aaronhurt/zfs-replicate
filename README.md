@@ -18,13 +18,6 @@ A POSIX shell script to automate ZFS Replication.
 - Includes a `--status` option for XigmaNAS that can be used to email the last log output at your preferred schedule.
   Simply add it as a custom script in the email settings under "System > Advanced > Email Reports"
 
-## Experimental POSIX Support
-
-There is a new script called `zfs-replicate-posix.sh` that is POSIX compliant (sh|dash). This script was converted from
-the existing script with ChatGPT and then hand reviewed line-by-line for correctness and completion of parts that were
-left out from the ChatGPT conversion. This script is currently considered experimental, but feedback would
-be appreciated.
-
 ## FreeBSD Package
 
 This script is available in the FreeBSD [package and ports tree](https://www.freshports.org/sysutils/zfs-replicate/).
