@@ -29,11 +29,14 @@ sortLogs() {
 ## check log count and delete old logs
 pruneLogs() {
   logs=$(sortLogs)
-  logCount=$(echo "$logs" | wc -l)
+  logCount=0
+  if [ -n "$logs" ]; then
+    logCount=$(printf "%s" "$logs" | wc -l)
+  fi
   if [ "$logCount" -gt "$LOG_KEEP" ]; then
     prune="$(echo "$logs" | sed -n "$((LOG_KEEP + 1)),\$p")"
-    printf "pruning logs %s\n" "$prune"
-    echo "$prune" | xargs rm -f
+    printf "pruning %d logs\n" "$((logCount - LOG_KEEP + 1))"
+    echo "$prune" | xargs rm -vf
   fi
 }
 
@@ -207,7 +210,7 @@ snapList() {
     exitClean 128 "failed to list snapshots for dataset: $set"
   fi
   ## filter snaps matching our pattern
-  echo "$snaps" | grep "@autorep-"
+  echo "$snaps" | grep "@autorep-" || true
 }
 
 ## helper function to check if substring is within string
@@ -266,8 +269,14 @@ snapCreate() {
       fi
     done
     ## get source and destination snap count
-    srcSnapCount=$(echo "$srcSnaps" | wc -l)
-    dstSnapCount=$(echo "$dstSnaps" | wc -l)
+    srcSnapCount=0
+    dstSnapCount=0
+    if [ -n "$srcSnaps" ]; then
+      srcSnapCount=$(printf "%s\n" "$srcSnaps" | wc -l)
+    fi
+    if [ -n "$dstSnaps" ]; then
+      dstSnapCount=$(printf "%s\n" "$dstSnaps" | wc -l)
+    fi
     ## set our base snap for incremental generation if src contains a sufficient
     ## number of snapshots and the base source snapshot exists in destination dataset
     base=""
