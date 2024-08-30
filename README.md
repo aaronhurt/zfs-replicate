@@ -73,7 +73,7 @@ Options:
 ### Config File and Environment Variable Reference
 
 ```bash
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 ## zfs-replicate configuration file
 # shellcheck disable=SC2034
 

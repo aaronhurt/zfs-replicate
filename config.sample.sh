@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 ## zfs-replicate configuration file
 # shellcheck disable=SC2034
 
