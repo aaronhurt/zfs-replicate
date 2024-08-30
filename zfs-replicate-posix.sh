@@ -108,7 +108,7 @@ checkHost() {
   cmd=$(echo "$HOST_CHECK" | sed "s/%HOST%/$host/g")
   printf "checking host cmd=%s\n" "$cmd"
   ## run the check
-  if ! sh -c "$cmd" > /dev/null 2>&1; then
+  if ! $cmd > /dev/null 2>&1; then
     exitClean 128 "host check failed"
   fi
 }
@@ -125,7 +125,7 @@ checkDataset() {
   cmd="$cmd$ZFS list -H -o name $set"
   printf "checking dataset cmd=%s\n" "$cmd"
   ## execute command
-  if ! sh -c "$cmd"; then
+  if ! $cmd; then
     exitClean 128 "failed to list dataset: $set"
   fi
 }
@@ -147,7 +147,7 @@ snapDestroy() {
   printf "destroying snapshot cmd=%s\n" "$cmd"
   ## ignore error from destroy and count on logging to alert the end-user
   ## destroying recursive snapshots can lead to "snapshot not found" errors
-  sh -c "$cmd" || true
+  $cmd || true
 }
 
 ## main replication function
@@ -161,6 +161,7 @@ snapSend() {
   ## check our send lockfile
   checkLock "${TMPDIR}/.replicate.send.lock"
   ## begin building send command
+  cmd=""
   if [ -n "$srcHost" ]; then
     cmd="$SSH $srcHost "
   fi
@@ -178,7 +179,7 @@ snapSend() {
   pipe="$pipe $dst"
   printf "sending snapshot cmd=%s | %s\n" "$cmd" "$pipe"
   ## execute send and check return
-  if ! sh -c "$cmd" | eval "$pipe"; then
+  if ! $cmd | $pipe; then
     snapDestroy "${src}@${name}" "$srcHost"
     exitClean 128 "failed to send snapshot: ${src}@${name}"
   fi
@@ -202,7 +203,7 @@ snapList() {
   fi
   cmd="$cmd $set"
   ## get snapshots from host
-  if ! snaps=$(sh -c "$cmd"); then
+  if ! snaps=$($cmd); then
     exitClean 128 "failed to list snapshots for dataset: $set"
   fi
   ## filter snaps matching our pattern
@@ -327,7 +328,7 @@ snapCreate() {
     cmd="$cmd ${src}@${name}"
     ## come on already...take that snapshot
     printf "creating snapshot cmd=%s\n" "$cmd"
-    if ! sh -c "$cmd"; then
+    if ! $cmd; then
       snapDestroy "${src}@${name}" "$srcHost"
       exitClean 128 "failed to create snapshot: ${src}@${name}"
     fi
@@ -498,5 +499,7 @@ main() {
   exitClean 0
 }
 
-## here we go ...
-loadConfig "$@" && main 2>&1 | captureOutput
+## process config and start main if we weren't sourced
+if [ "${0##*/}" != "sh" ] && [ "${0##*/}" != "dash" ] && [ "${0##*/}" != "-bash" ]; then
+  loadConfig "$@" && main 2>&1 | captureOutput
+fi
