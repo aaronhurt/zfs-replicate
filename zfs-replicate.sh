@@ -453,10 +453,11 @@ loadConfig() {
   TAG="$(subTags "$TAG")"
   LOG_FILE="$(subTags "$LOG_FILE")"
   ## process command-line options
+  opt=${1:-""} optArg=${2:-""}
   while [ $# -gt 0 ]; do
-    case "$1" in
+    case "$opt" in
       -c | --config)
-        configFile=$2
+        configFile="$optArg"
         shift
         ;;
       -s | --status)
@@ -465,7 +466,14 @@ loadConfig() {
       -h | --help)
         showHelp
         ;;
-      *) # bad long option
+      *)
+        ## check for config file for backwards compatibility
+        if [ -z "$configFile" ] && [ -f "$opt" ]; then
+          configFile="$opt"
+          shift
+          continue
+        fi
+        ## nothing left, error out
         writeLog "ERROR: illegal option ${1}" && exit 1
         ;;
     esac
