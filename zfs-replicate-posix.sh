@@ -244,6 +244,8 @@ snapCreate() {
         continue
       fi
     fi
+    srcHost=""
+    dstHost=""
     ## look for host options on source
     if contains "$src" "@"; then
       srcHost=$(echo "$src" | cut -f2 -d@)
