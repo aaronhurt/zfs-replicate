@@ -110,123 +110,132 @@ _testZFSReplicate() {
         1)
           match="cmd=${ZFS} list -H -o name srcPool0/srcFS0"
           ;;
-        5)
+        3)
           match="cmd=${ZFS} list -H -o name dstPool0/dstFS0"
           ;;
-        10)
+        6)
           match="cmd=${ZFS} destroy srcPool0/srcFS0@autorep-test1"
           ;;
-        11)
+        7)
           match="cmd=${ZFS} snapshot srcPool0/srcFS0@autorep-"
           ;;
-        12)
+        8)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        13)
+        9)
           match="cmd=${ZFS} send -Rs -I srcPool0/srcFS0@autorep-test3 srcPool0/srcFS0@autorep-${TAG} |"
           match="$match ${DEST_PIPE_WITHOUT_HOST} dstPool0/dstFS0"
           ;;
-        14)
+        10)
           match="receive -vFd dstPool0/dstFS0"
           ;;
-        15)
+        11)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        16)
+        12)
           match="cmd=${ECHO} dstHost1"
           ;;
-        17)
+        13)
           match="cmd=${ZFS} list -H -o name srcPool1/srcFS1/subFS1"
           ;;
-        21)
+        15)
           match="cmd=${SSH} dstHost1 ${ZFS} list -H -o name dstPool1/dstFS1"
           ;;
-        26)
+        18)
           match="cmd=${ZFS} destroy srcPool1/srcFS1/subFS1@autorep-test1"
           ;;
-        27)
+        19)
           match="cmd=${ZFS} snapshot srcPool1/srcFS1/subFS1@autorep-${TAG}"
           ;;
-        28)
+        20)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        29)
+        21)
           match="cmd=${ZFS} send -Rs -I srcPool1/srcFS1/subFS1@autorep-test3 srcPool1/srcFS1/subFS1@autorep-${TAG} |"
           match="$match ${SSH} dstHost1 ${ZFS} receive -vFd dstPool1/dstFS1"
           ;;
-        31)
+        23)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        33)
+        24)
+          match="cmd=${ECHO} dstHost2"
+          ;;
+        25)
           match="cmd=${ZFS} list -H -o name srcPool2/srcFS2"
           ;;
-        37)
+        27)
           match="cmd=${SSH} dstHost2 ${ZFS} list -H -o name dstPool2/dstFS2"
           ;;
-        42)
+        30)
           match="cmd=${ZFS} destroy srcPool2/srcFS2@autorep-test1"
           ;;
-        43)
+        31)
           match="cmd=${ZFS} snapshot srcPool2/srcFS2@autorep-${TAG}"
+          ;;
+        32)
+          match="creating lockfile ${TMPDIR}/.replicate.send.lock"
+          ;;
+        33)
+          match="cmd=${ZFS} send -Rs -I srcPool2/srcFS2@autorep-test3 srcPool2/srcFS2@autorep-${TAG} |"
+          match="$match ${SSH} dstHost2 ${ZFS} receive -vFd dstPool2/dstFS2"
+          ;;
+        35)
+          match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
+          ;;
+        36)
+          match="cmd=${ECHO} srcHost3"
+          ;;
+        37)
+          match=" cmd=${SSH} srcHost3 ${ZFS} list -H -o name srcPool3/srcFS3"
+          ;;
+        39)
+          match="cmd=${ZFS} list -H -o name dstPool3/dstFS3"
+          ;;
+        42)
+          match="cmd=${SSH} srcHost3 ${ZFS} destroy srcPool3/srcFS3@autorep-test1"
+          ;;
+        43)
+          match="cmd=${SSH} srcHost3 ${ZFS} snapshot srcPool3/srcFS3@autorep-${TAG}"
           ;;
         44)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
         45)
-          match="cmd=${ZFS} send -Rs -I srcPool2/srcFS2@autorep-test3 srcPool2/srcFS2@autorep-${TAG} |"
-          match="$match ${SSH} dstHost2 ${ZFS} receive -vFd dstPool2/dstFS2"
+          match="cmd=${SSH} srcHost3 ${ZFS} send -Rs -I srcPool3/srcFS3@autorep-test3 srcPool3/srcFS3@autorep-${TAG} |"
+          match="$match ${ZFS} receive -vFd dstPool3/dstFS3"
           ;;
         47)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
         48)
-          match="cmd=${ECHO} srcHost3"
+          match="cmd=${ECHO} srcHost4"
           ;;
         49)
-          match=" cmd=${SSH} srcHost3 ${ZFS} list -H -o name srcPool3/srcFS3"
+          match="cmd=${ECHO} dstHost4"
           ;;
-        53)
-          match="cmd=${ZFS} list -H -o name dstPool3/dstFS3"
-          ;;
-        58)
-          match="cmd=${SSH} srcHost3 ${ZFS} destroy srcPool3/srcFS3@autorep-test1"
-          ;;
-        59)
-          match="cmd=${SSH} srcHost3 ${ZFS} snapshot srcPool3/srcFS3@autorep-${TAG}"
-          ;;
-        60)
-          match="creating lockfile ${TMPDIR}/.replicate.send.lock"
-          ;;
-        61)
-          match="cmd=${SSH} srcHost3 ${ZFS} send -Rs -I srcPool3/srcFS3@autorep-test3 srcPool3/srcFS3@autorep-${TAG} |"
-          match="$match ${ZFS} receive -vFd dstPool3/dstFS3"
-          ;;
-        63)
-          match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
-          ;;
-        66)
+        50)
           match="cmd=${SSH} srcHost4 ${ZFS} list -H -o name srcPool4/srcFS4"
           ;;
-        70)
+        52)
           match="cmd=${SSH} dstHost4 ${ZFS} list -H -o name dstPool4/dstFS4"
           ;;
-        75)
+        55)
           match="cmd=${SSH} srcHost4 ${ZFS} destroy srcPool4/srcFS4@autorep-test1"
           ;;
-        76)
+        56)
           match="cmd=${SSH} srcHost4 ${ZFS} snapshot srcPool4/srcFS4@autorep-${TAG}"
           ;;
-        77)
+        57)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        78)
+        58)
           match="cmd=${SSH} srcHost4 ${ZFS} send -Rs -I srcPool4/srcFS4@autorep-test3 srcPool4/srcFS4@autorep-${TAG} |"
           match="$match ${SSH} dstHost4 ${ZFS} receive -vFd dstPool4/dstFS4"
           ;;
-        80)
+        60)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        81)
+        61)
           match="deleting lockfile ${TMPDIR}/.replicate.snapshot.lock"
           ;;
       esac
@@ -253,17 +262,84 @@ _testZFSReplicate() {
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
+        0)
+          match="creating lockfile ${TMPDIR}/.replicate.snapshot.lock"
+          ;;
+        13)
+          match="source or destination host check failed"
+          ;;
+        15)
+          match="source or destination host check failed"
+          ;;
         17)
           match="source or destination host check failed"
           ;;
         19)
           match="source or destination host check failed"
           ;;
-        21)
-          match="source or destination host check failed"
+        20)
+          match="deleting lockfile ${TMPDIR}/.replicate.snapshot.lock"
           ;;
-        23)
-          match="source or destination host check failed"
+      esac
+      _fail "$line" "$match"
+    done
+  )
+
+  ## test snapCreate with dataset check errors
+  (
+    ## configure test parameters
+    FIND="${SCRIPT_PATH}/find.sh"
+    ZFS="${SCRIPT_PATH}/zfs.sh"
+    SSH="${SCRIPT_PATH}/ssh.sh"
+    HOST_CHECK="${ECHO} %HOST%"
+    REPLICATE_SETS="failPool0/srcFS0:dstPool0/dstFS0"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool1/srcFS1:failPool1/dstFS1@dstHost1"
+    REPLICATE_SETS="${REPLICATE_SETS} failPool2/srcFS2@srcHost2:dstPool2/dstFS2"
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh && loadConfig
+    printf "_testZFSReplicate/snapCreateWithDatasetCheckErrors\n"
+    snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
+      match=""
+      printf "%d %s\n" "$idx" "$line"
+      case $idx in
+        0)
+          match="creating lockfile ${TMPDIR}/.replicate.snapshot.lock"
+          ;;
+        1)
+          match="cmd=${ZFS} list -H -o name failPool0/srcFS0"
+          ;;
+        2)
+          match="dataset does not exist"
+          ;;
+        3)
+          match="source or destination dataset check failed"
+          ;;
+        5)
+          match="cmd=${ZFS} list -H -o name srcPool1/srcFS1"
+          ;;
+        6)
+          match="srcPool1/srcFS1"
+          ;;
+        7)
+          match="cmd=${SSH} dstHost1 ${ZFS} list -H -o name failPool1/dstFS1"
+          ;;
+        8)
+          match="dataset does not exist"
+          ;;
+        9)
+          match="source or destination dataset check failed"
+          ;;
+        11)
+          match="cmd=${SSH} srcHost2 ${ZFS} list -H -o name failPool2/srcFS2"
+          ;;
+        12)
+          match="dataset does not exist"
+          ;;
+        13)
+          match="source or destination dataset check failed"
+          ;;
+        14)
+          match="deleting lockfile ${TMPDIR}/.replicate.snapshot.lock"
           ;;
       esac
       _fail "$line" "$match"
