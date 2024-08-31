@@ -52,7 +52,7 @@ __SKIP_COUNT=0
 sortLogs() {
   ## check if file logging is enabled
   if [ -z "$LOG_BASE" ] || [ ! -d "$LOG_BASE" ]; then
-    return
+    return 0
   fi
   ## find existing logs
   logs=$($FIND "$LOG_BASE" -maxdepth 1 -type f -name 'autorep-*')
@@ -147,15 +147,19 @@ checkLock() {
 checkHost() {
   ## do we have a host check defined
   if [ -z "$HOST_CHECK" ]; then
-    return
+    return 0
   fi
   host=$1
+  if [ -z "$host" ]; then
+    return 0
+  fi
   cmd=$(printf "%s\n" "$HOST_CHECK" | sed "s/%HOST%/$host/g")
   printf "checking host cmd=%s\n" "$cmd"
   ## run the check
   if ! $cmd > /dev/null 2>&1; then
-    exitClean 128 "host check failed"
+    return 1
   fi
+  return 0
 }
 
 ## ensure dataset exists
@@ -171,8 +175,9 @@ checkDataset() {
   printf "checking dataset cmd=%s\n" "$cmd"
   ## execute command
   if ! $cmd; then
-    exitClean 128 "failed to list dataset: $set"
+    return 1
   fi
+  return 0
 }
 
 ## small wrapper around zfs destroy
@@ -271,7 +276,7 @@ snapCreate() {
     if [ "$ALLOW_ROOT_DATASETS" -ne 1 ]; then
       if [ "$dst" = "$(basename "$dst")" ] || [ "$dst" = "$(basename "$dst")/" ]; then
         temps="replicating root datasets can lead to data loss - set ALLOW_ROOT_DATASETS=1 to override"
-        printf "WARNING: %s\n" "$temps"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
         __SKIP_COUNT=$((__SKIP_COUNT + 1))
         continue
       fi
@@ -279,21 +284,28 @@ snapCreate() {
     ## init source and destination host in each loop iteration
     srcHost=""
     dstHost=""
-    ## look for host options on source and check host if found
+    ## look for source host option
     if [ "${src#*"@"}" != "$src" ]; then
       srcHost=$(printf "%s\n" "$src" | cut -f2 -d@)
-      checkHost "$srcHost"
       src=$(printf "%s\n" "$src" | cut -f1 -d@)
     fi
-    ## look for host options on destination and check host if found
+    ## look for destination host option
     if [ "${dst#*"@"}" != "$dst" ]; then
       dstHost=$(printf "%s\n" "$dst" | cut -f2 -d@)
-      checkHost "$dstHost"
       dst=$(printf "%s\n" "$dst" | cut -f1 -d@)
     fi
+    ## check source and destination hosts
+    if ! checkHost "$srcHost" || ! checkHost "$dstHost"; then
+      printf "WARNING: skipping replication set '%s' - source or destination host check failed\n" "$pair"
+      __SKIP_COUNT=$((__SKIP_COUNT + 1))
+      continue
+    fi
     ## check source and destination datasets
-    checkDataset "$src" "$srcHost"
-    checkDataset "$dst" "$dstHost"
+    if ! checkDataset "$src" "$srcHost" || ! checkDataset "$dst" "$dstHost"; then
+      printf "WARNING: skipping replication set '%s' - source or destination dataset check failed\n" "$pair"
+      __SKIP_COUNT=$((__SKIP_COUNT + 1))
+      continue
+    fi
     ## get source and destination snapshots
     srcSnaps=$(snapList "$src" "$srcHost" 1)
     dstSnaps=$(snapList "$dst" "$dstHost" 0)
@@ -508,9 +520,6 @@ loadConfig() {
   if [ -n "$LOG_BASE" ] && [ ! -d "$LOG_BASE" ]; then
     mkdir -p "$LOG_BASE"
   fi
-  if [ -z "$FIND" ]; then
-    writeLog "ERROR: unable to locate system find binary" && exit 1
-  fi
   ## we have all we need for status
   if [ "$status" -eq 1 ]; then
     showStatus
@@ -524,6 +533,9 @@ loadConfig() {
   fi
   if [ "$SNAP_KEEP" -lt 2 ]; then
     writeLog "ERROR: a minimum of 2 snapshots are required for incremental sending" && exit 1
+  fi
+  if [ -z "$FIND" ]; then
+    writeLog "ERROR: unable to locate system find binary" && exit 1
   fi
   if [ -z "$SSH" ]; then
     writeLog "ERROR: unable to locate system ssh binary" && exit 1

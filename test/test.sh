@@ -1,6 +1,7 @@
 #!/usr/bin/env dash
-# shellcheck disable=SC2030,SC2031
+# shellcheck disable=SC2030,SC2031,SC2034
 ## ^^ tests are intentionally run in subshells
+## variables that appear unused here are used by main script
 
 ## test.sh contains zfs-replicate test cases
 set -eu ## fail on errors and undefined variables
@@ -16,7 +17,6 @@ SCRIPT_PATH="${0%/*}"
 _fail() {
   line=$1
   match=$2
-  ## verbose testing
   ## hack to match blank lines
   if [ "$match" = "null" ] && [ -n "$line" ]; then
     printf "FAILED '%s' != ''\n" "$line" && exit 1
@@ -30,44 +30,35 @@ _fail() {
 
 _testZFSReplicate() {
   ## wrapper for easy matching
-  export ECHO="echo"
-  ## define test conditions
-  export FIND="${SCRIPT_PATH}/find.sh"
-  export ZFS="${SCRIPT_PATH}/zfs.sh"
-  export SSH="${SCRIPT_PATH}/ssh.sh"
-  export HOST_CHECK="${ECHO} %HOST%"
-  export SYSLOG=0
-  REPLICATE_SETS="srcPool0/srcFS0:dstPool0/dstFS0"
-  REPLICATE_SETS="${REPLICATE_SETS} srcPool1/srcFS1/subFS1:dstPool1/dstFS1@dstHost1"
-  REPLICATE_SETS="${REPLICATE_SETS} srcPool2/srcFS2:dstPool2/dstFS2@dstHost2"
-  REPLICATE_SETS="${REPLICATE_SETS} srcPool3/srcFS3@srcHost3:dstPool3/dstFS3"
-  REPLICATE_SETS="${REPLICATE_SETS} srcPool4/srcFS4@srcHost4:dstPool4/dstFS4@dstHost4"
+  ECHO="echo"
+  ## disable syslog for tests
+  SYSLOG=0
 
   ## test loadConfig
   (
-    ## source script functions
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
-    printf "_testSetsNoConfig/loadConfig\n" ## we expect no output and clean exit
+    printf "_testZFSReplicate/loadConfigWithError\n"
     loadConfig | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
-        *)
-          _fail "$line" "null"
+        0)
+          _fail "$line" "missing required setting REPLICATE_SETS"
           ;;
       esac
     done
   )
 
-  ## test config override
+  ## test config override of script defaults
   (
     ## likely default values at script load time
+    FIND="/usr/bin/find"
     ZFS="/sbin/zfs"
     SSH="/usr/sbin/ssh"
-    ## source script functions
+    REPLICATE_SETS="fakeSource:fakeDest"
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
-    printf "_testSetsNoConfig/loadConfigOverrideDefaults\n"
+    printf "_testZFSReplicate/loadConfigOverrideDefaults\n"
     _fail "/usr/sbin/ssh %HOST% /sbin/zfs receive -vFd" "$DEST_PIPE_WITH_HOST"
     _fail "/sbin/zfs receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
     ## generate config
@@ -81,12 +72,21 @@ _testZFSReplicate() {
     _fail "myZFS receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
   )
 
-  ## test snapCreate
+  ## test snapCreate with different set combinations
   (
-    ## source script functions
+    ## configure test parameters
+    FIND="${SCRIPT_PATH}/find.sh"
+    ZFS="${SCRIPT_PATH}/zfs.sh"
+    SSH="${SCRIPT_PATH}/ssh.sh"
+    HOST_CHECK="${ECHO} %HOST%"
+    REPLICATE_SETS="srcPool0/srcFS0:dstPool0/dstFS0"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool1/srcFS1/subFS1:dstPool1/dstFS1@dstHost1"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool2/srcFS2:dstPool2/dstFS2@dstHost2"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool3/srcFS3@srcHost3:dstPool3/dstFS3"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool4/srcFS4@srcHost4:dstPool4/dstFS4@dstHost4"
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
-    printf "_testSetsNoConfig/snapCreate\n"
+    printf "_testZFSReplicate/snapCreateWithoutErrors\n"
     snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
@@ -221,17 +221,78 @@ _testZFSReplicate() {
     done
   )
 
-  ## test exitClean
+  ## test snapCreate with host check errors
   (
+    ## configure test parameters
+    FIND="${SCRIPT_PATH}/find.sh"
+    ZFS="${SCRIPT_PATH}/zfs.sh"
+    SSH="${SCRIPT_PATH}/ssh.sh"
+    HOST_CHECK="false"
+    REPLICATE_SETS="srcPool0/srcFS0:dstPool0/dstFS0"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool1/srcFS1/subFS1:dstPool1/dstFS1@dstHost1"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool2/srcFS2:dstPool2/dstFS2@dstHost2"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool3/srcFS3@srcHost3:dstPool3/dstFS3"
+    REPLICATE_SETS="${REPLICATE_SETS} srcPool4/srcFS4@srcHost4:dstPool4/dstFS4@dstHost4"
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh && loadConfig
+    printf "_testZFSReplicate/snapCreateWithHostCheckErrors\n"
+    snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
+      match=""
+      printf "%d %s\n" "$idx" "$line"
+      case $idx in
+        17)
+          match="source or destination host check failed"
+          ;;
+        19)
+          match="source or destination host check failed"
+          ;;
+        21)
+          match="source or destination host check failed"
+          ;;
+        23)
+          match="source or destination host check failed"
+          ;;
+      esac
+      _fail "$line" "$match"
+    done
+  )
+
+  ## test exitClean code=0 and extra message
+  (
+    FIND="fakeFIND"
+    ZFS="fakeZFS"
+    SSH="fakeSSH"
+    REPLICATE_SETS="fakeSource:fakeDest"
     ## source script functions
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
-    printf "_testSetsNoConfig/exitClean\n"
+    printf "_testZFSReplicate/exitCleanSuccess\n"
     exitClean 0 "test message" | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
         0)
-          match="success total sets 0 skipped 0: test message"
+          match="success total sets 0 skipped 0: test message" ## counts in test are always zero
+          _fail "$line" "$match"
+          ;;
+      esac
+    done
+  )
+
+  ## test exitClean code=99 with error message
+  (
+    FIND="fakeFIND"
+    ZFS="fakeZFS"
+    SSH="fakeSSH"
+    REPLICATE_SETS="fakeSource:fakeDest"
+    ## source script functions
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh && loadConfig
+    printf "_testZFSReplicate/exitCleanError\n"
+    exitClean 99 "error message" | awk '{ print NR-1, $0 }' | while read -r idx line; do
+      printf "%d %s\n" "$idx" "$line"
+      case $idx in
+        0)
+          match="operation exited unexpectedly: code=99 msg=error message"
           _fail "$line" "$match"
           ;;
       esac
@@ -239,6 +300,7 @@ _testZFSReplicate() {
   )
 
   ## yay, tests completed!
+  printf "Tests Complete: No Error!\n"
   return 0
 }
 
