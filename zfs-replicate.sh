@@ -38,13 +38,12 @@ LOGGER="${LOGGER:-$(which logger || true)}"
 FIND="${FIND:-$(which find || true)}"
 SSH="${SSH:-$(which ssh || true)}"
 ZFS="${ZFS:-$(which zfs || true)}"
-DEST_PIPE_WITH_HOST="${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}"
-DEST_PIPE_WITHOUT_HOST="${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}"
 HOST_CHECK="${HOST_CHECK:-"ping -c1 -q -W2 %HOST%"}"
-
+## we default these after config is loaded
+DEST_PIPE_WITH_HOST=
+DEST_PIPE_WITHOUT_HOST=
 ## temp path used for lock files
 TMPDIR="${TMPDIR:-"/tmp"}"
-
 ## init values used in snapCreate and exitClean
 __PAIR_COUNT=0
 __SKIP_COUNT=0
@@ -500,10 +499,11 @@ loadConfig() {
   readonly FIND
   readonly SSH
   readonly ZFS
-  readonly DEST_PIPE_WITH_HOST
-  readonly DEST_PIPE_WITHOUT_HOST
   readonly HOST_CHECK
   readonly TMPDIR
+  ## set pipes after configuration to ensure proper $SSH and $ZFS subs
+  readonly DEST_PIPE_WITH_HOST="${DEST_PIPE_WITH_HOST:-"$SSH %HOST% $ZFS receive -vFd"}"
+  readonly DEST_PIPE_WITHOUT_HOST="${DEST_PIPE_WITHOUT_HOST:-"$ZFS receive -vFd"}"
   ## check configuration
   if [ -n "$LOG_BASE" ] && [ ! -d "$LOG_BASE" ]; then
     mkdir -p "$LOG_BASE"

@@ -58,18 +58,24 @@ _testZFSReplicate() {
 
   ## test config override
   (
+    ## likely default values at script load time
+    ZFS="/sbin/zfs"
+    SSH="/usr/sbin/ssh"
     ## source script functions
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
     printf "_testSetsNoConfig/loadConfigOverrideDefaults\n"
-    _fail "./ssh.sh %HOST% ./zfs.sh receive -vFd" "$DEST_PIPE_WITH_HOST"
-    _fail "./zfs.sh receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
+    _fail "/usr/sbin/ssh %HOST% /sbin/zfs receive -vFd" "$DEST_PIPE_WITH_HOST"
+    _fail "/sbin/zfs receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
+    ## generate config
     config="$(mktemp)"
-    printf "DEST_PIPE_WITH_HOST=\"pipe with host\"\n" | tee -a "$config"
-    printf "DEST_PIPE_WITHOUT_HOST=\"pipe without host\"\n" | tee -a "$config"
-    loadConfig "$config" > /dev/null 2>&1
-    _fail "pipe with host" "$DEST_PIPE_WITH_HOST"
-    _fail "pipe without host" "$DEST_PIPE_WITHOUT_HOST"
+    printf "ZFS=\"myZFS\"\n" >> "$config"
+    ## set SSH via environment
+    SSH="mySSH"
+    loadConfig "$config" && rm -f "$config"
+    ## values should match config and environment
+    _fail "mySSH %HOST% myZFS receive -vFd" "$DEST_PIPE_WITH_HOST"
+    _fail "myZFS receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
   )
 
   ## test snapCreate
