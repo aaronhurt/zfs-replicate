@@ -56,7 +56,7 @@ sortLogs() {
     return
   fi
   ## find existing logs
-  logs=$(find "$LOG_BASE" -maxdepth 1 -type f -name 'autorep-*')
+  logs=$($FIND "$LOG_BASE" -maxdepth 1 -type f -name 'autorep-*')
   ## get file change time via stat (platform specific)
   if [ "$(uname -s)" = "Linux" ] || [ "$(uname -s)" = "SunOS" ]; then
     fstat='stat -c %Z'

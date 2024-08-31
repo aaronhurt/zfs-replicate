@@ -11,7 +11,9 @@ SCRIPT_PATH="${0%/*}"
 
 ## check line against match and exit on failure
 _fail() {
-  local line=$1 match=$2
+  line=$1
+  match=$2
+  ## verbose testing
   ## hack to match blank lines
   if [ "$match" = "null" ] && [ -n "$line" ]; then
     printf "FAILED '%s' != ''\n" "$line" && exit 1
@@ -38,13 +40,12 @@ _testZFSReplicate() {
   REPLICATE_SETS="${REPLICATE_SETS} srcPool3/srcFS3@srcHost3:dstPool3/dstFS3"
   REPLICATE_SETS="${REPLICATE_SETS} srcPool4/srcFS4@srcHost4:dstPool4/dstFS4@dstHost4"
 
-  ## source script functions
-  # shellcheck source=/dev/null
-  . ../zfs-replicate.sh
-
   ## test loadConfig
   (
-    printf "_testSimpleSetNoConfig/loadConfig\n"
+    ## source script functions
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh
+    printf "_testSetsNoConfig/loadConfig\n" ## we expect no output and clean exit
     loadConfig | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -55,10 +56,28 @@ _testZFSReplicate() {
     done
   )
 
+  ## test config override
+  (
+    ## source script functions
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh
+    printf "_testSetsNoConfig/loadConfigOverrideDefaults\n"
+    _fail "./ssh.sh %HOST% ./zfs.sh receive -vFd" "$DEST_PIPE_WITH_HOST"
+    _fail "./zfs.sh receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
+    config="$(mktemp)"
+    printf "DEST_PIPE_WITH_HOST=\"pipe with host\"\n" | tee -a "$config"
+    printf "DEST_PIPE_WITHOUT_HOST=\"pipe without host\"\n" | tee -a "$config"
+    loadConfig "$config" > /dev/null 2>&1
+    _fail "pipe with host" "$DEST_PIPE_WITH_HOST"
+    _fail "pipe without host" "$DEST_PIPE_WITHOUT_HOST"
+  )
+
   ## test snapCreate
   (
-    loadConfig > /dev/null 2>&1
-    printf "_testSimpleSetNoConfig/snapCreate\n"
+    ## source script functions
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh && loadConfig
+    printf "_testSetsNoConfig/snapCreate\n"
     snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
@@ -195,8 +214,10 @@ _testZFSReplicate() {
 
   ## test exitClean
   (
-    loadConfig > /dev/null 2>&1
-    printf "_testSimpleSetNoConfig/exitClean\n"
+    ## source script functions
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh && loadConfig
+    printf "_testSetsNoConfig/exitClean\n"
     exitClean 0 "test message" | awk '{ print NR-1, $0 }' | while read -r idx line; do
       printf "%d %s\n" "$idx" "$line"
       case $idx in
