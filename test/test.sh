@@ -1,4 +1,4 @@
-#!/usr/bin/env dash
+#!/usr/bin/env sh
 # shellcheck disable=SC2030,SC2031,SC2034
 ## ^^ tests are intentionally run in subshells
 ## variables that appear unused here are used by main script
@@ -18,8 +18,11 @@ _fail() {
   line=$1
   match=$2
   ## hack to match blank lines
-  if [ "$match" = "null" ] && [ -n "$line" ]; then
-    printf "FAILED '%s' != ''\n" "$line" && exit 1
+  if [ "$match" = "null" ]; then
+    if [ -n "$line" ]; then
+      printf "FAILED '%s' != ''\n" "$line" && exit 1
+    fi
+    return 0
   fi
   case "$line" in
     *"$match"*) ;;
@@ -34,19 +37,29 @@ _testZFSReplicate() {
   ## disable syslog for tests
   SYSLOG=0
 
-  ## test loadConfig
+  ## test loadConfig without error
   (
+    FIND="fakeFIND"
+    ZFS="fakeZFS"
+    SSH="fakeSSH"
+    REPLICATE_SETS="fakeSource:fakeDest"
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh
+    printf "_testZFSReplicate/loadConfigWithoutError\n"
+    line=$(loadConfig)
+    _fail "$line" "null" ## we expect no output here
+  )
+
+  ## test loadConfig with missing values
+  (
+    FIND="fakeFIND"
+    ZFS="fakeZFS"
+    SSH="fakeSSH"
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
     printf "_testZFSReplicate/loadConfigWithError\n"
-    loadConfig | awk '{ print NR-1, $0 }' | while read -r idx line; do
-      printf "%d %s\n" "$idx" "$line"
-      case $idx in
-        0)
-          _fail "$line" "missing required setting REPLICATE_SETS"
-          ;;
-      esac
-    done
+    ! line=$(loadConfig) && true ## prevent tests from exiting
+    _fail "$line" "missing required setting REPLICATE_SETS"
   )
 
   ## test config override of script defaults
@@ -267,15 +280,9 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/exitCleanSuccess\n"
-    exitClean 0 "test message" | awk '{ print NR-1, $0 }' | while read -r idx line; do
-      printf "%d %s\n" "$idx" "$line"
-      case $idx in
-        0)
-          match="success total sets 0 skipped 0: test message" ## counts in test are always zero
-          _fail "$line" "$match"
-          ;;
-      esac
-    done
+    line=$(exitClean 0 "test message")
+    match="success total sets 0 skipped 0: test message" ## counts are modified in snapCreate
+    _fail "$line" "$match"
   )
 
   ## test exitClean code=99 with error message
@@ -288,15 +295,9 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/exitCleanError\n"
-    exitClean 99 "error message" | awk '{ print NR-1, $0 }' | while read -r idx line; do
-      printf "%d %s\n" "$idx" "$line"
-      case $idx in
-        0)
-          match="operation exited unexpectedly: code=99 msg=error message"
-          _fail "$line" "$match"
-          ;;
-      esac
-    done
+    ! line=$(exitClean 99 "error message") && true ## prevent tests from exiting
+    match="operation exited unexpectedly: code=99 msg=error message"
+    _fail "$line" "$match"
   )
 
   ## yay, tests completed!

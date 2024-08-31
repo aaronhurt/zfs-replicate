@@ -23,9 +23,9 @@ _fakeZFS() {
     receive)
       printf "%s\n" "$*"
       ;;
-    destroy | snapshot) ;;
+    destroy | snapshot | send) ;;
     *)
-      printf "zfs %s\n" "$*"
+      printf "%s\n" "$*"
       ;;
   esac
   return 0
