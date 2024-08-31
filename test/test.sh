@@ -1,4 +1,7 @@
 #!/usr/bin/env dash
+# shellcheck disable=SC2030,SC2031
+## ^^ tests are intentionally run in subshells
+
 ## test.sh contains zfs-replicate test cases
 set -eu ## fail on errors and undefined variables
 
