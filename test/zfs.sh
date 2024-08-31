@@ -21,11 +21,11 @@ _fakeZFS() {
       printf "%s@autorep-test3\n" "${target}"
       ;;
     receive)
-      printf "%s\n" "$(printf "%s\n" "$@" | tr "\n" " ")"
+      printf "%s\n" "$*"
       ;;
     destroy | snapshot) ;;
     *)
-      printf "zfs %s\n" "$(printf "%s\n" "$@" | tr "\n" " ")"
+      printf "zfs %s\n" "$*"
       ;;
   esac
   return 0

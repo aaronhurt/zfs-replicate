@@ -7,7 +7,7 @@ set -eu
 (set -o pipefail 2> /dev/null) && set -o pipefail
 
 _fakeFIND() {
-  printf "find %s\n" "$@"
+  printf "find %s\n" "$*"
   return 0
 }
 
