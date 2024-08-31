@@ -100,7 +100,8 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/snapCreateWithoutErrors\n"
-    snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
+    idx=0
+    snapCreate | while IFS= read -r line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -240,6 +241,7 @@ _testZFSReplicate() {
           ;;
       esac
       _fail "$line" "$match"
+      idx=$((idx + 1))
     done
   )
 
@@ -258,7 +260,8 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/snapCreateWithHostCheckErrors\n"
-    snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
+    idx=0
+    snapCreate | while IFS= read -r line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -282,6 +285,7 @@ _testZFSReplicate() {
           ;;
       esac
       _fail "$line" "$match"
+      idx=$((idx + 1))
     done
   )
 
@@ -298,7 +302,8 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/snapCreateWithDatasetCheckErrors\n"
-    snapCreate | awk '{ print NR-1, $0 }' | while read -r idx line; do
+    idx=0
+    snapCreate | while IFS= read -r line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -343,6 +348,7 @@ _testZFSReplicate() {
           ;;
       esac
       _fail "$line" "$match"
+      idx=$((idx + 1))
     done
   )
 

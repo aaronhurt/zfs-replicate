@@ -46,6 +46,7 @@ _fakeZFS() {
       printf "%s\n" "$target"
       ;;
     receive)
+      sleep 2 ## simulate transfer wait
       printf "%s %s\n" "$cmd" "$*"
       ;;
     destroy | snapshot | send) ;;
