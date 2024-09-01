@@ -53,7 +53,7 @@ is not met.
 ### Available Command Line Options
 
 ```text
-Usage: ./zfs-replicate.sh [options] [config]
+Usage: ./zfs-replicate.sh [config] [options]
 
 POSIX shell script to automate ZFS Replication
 

@@ -446,7 +446,7 @@ showStatus() {
 
 ## show usage and exit
 showHelp() {
-  printf "Usage: %s [options] [config]\n\n" "${SCRIPT}"
+  printf "Usage: %s [config] [options]\n\n" "${SCRIPT}"
   printf "POSIX shell script to automate ZFS Replication\n\n"
   printf "Options:\n"
   printf "  -c, --config <configFile>    configuration file\n"
@@ -459,9 +459,15 @@ showHelp() {
 loadConfig() {
   configFile=""
   status=0
+  help=0
   ## sub macros for logging
   TAG="$(subTags "$TAG")"
   LOG_FILE="$(subTags "$LOG_FILE")"
+  ## check for config file as first argument for backwards compatibility
+  if [ $# -gt 0 ] && [ -f "$1" ]; then
+    configFile="$1"
+    shift
+  fi
   ## process command-line options
   while [ $# -gt 0 ]; do
     if [ "$1" = "-c" ] || [ "$1" = "--config" ]; then
@@ -470,20 +476,23 @@ loadConfig() {
       shift
       continue
     fi
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+      help=1
+      shift
+      continue
+    fi
     if [ "$1" = "-s" ] || [ "$1" = "--status" ]; then
       status=1
       shift
       continue
     fi
-    ## unknown option - check for config file for backwards compatibility
-    if [ -z "$configFile" ] && [ -f "$1" ]; then
-      configFile="$1"
-      shift
-      continue
-    fi
-    ## nothing left, error out
+    ## unknown option
     writeLog "ERROR: illegal option ${1}" && exit 1
   done
+  ## someone ask for help?
+  if [ "$help" -eq 1 ]; then
+    showHelp
+  fi
   ## attempt to load configuration
   if [ -f "$configFile" ]; then
     # shellcheck disable=SC1090
