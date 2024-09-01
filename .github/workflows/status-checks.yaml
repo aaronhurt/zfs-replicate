@@ -54,7 +54,7 @@ jobs:
           level: info
           filter_mode: nofilter
           fail_on_error: true
-          shfmt_flags: '-ln bash -ci -sr -i 2'
+          shfmt_flags: '-ci -sr -i 2'
 
   shellcheck:
     name: runner / shellcheck
@@ -76,6 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash ./test.sh
+      - run: cd test && ./test.sh
         env:
           TMPDIR: ${{ runner.temp }}
