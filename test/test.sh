@@ -46,8 +46,8 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
     printf "_testZFSReplicate/loadConfigWithoutError\n"
-    line=$(loadConfig)
-    _fail "$line" "null" ## we expect no output here
+    lines=$(loadConfig 2>&1)
+    _fail "$lines" "null" ## we expect no output here
   )
 
   ## test loadConfig with missing values
@@ -58,37 +58,66 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
     printf "_testZFSReplicate/loadConfigWithError\n"
-    ! line=$(loadConfig) && true ## prevent tests from exiting
-    _fail "$line" "missing required setting REPLICATE_SETS"
+    ! lines=$(loadConfig 2>&1) && true ## prevent tests from exiting
+    _fail "$lines" "missing required setting REPLICATE_SETS"
   )
 
   ## test config override of script defaults
   (
-    ## likely default values at script load time
-    FIND="/usr/bin/find"
-    ZFS="/sbin/zfs"
-    SSH="/usr/sbin/ssh"
+    ## generic default values
+    FIND="fakeFIND"
+    ZFS="fakeZFS"
+    SSH="fakeSSH"
     REPLICATE_SETS="fakeSource:fakeDest"
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh
     printf "_testZFSReplicate/loadConfigOverrideDefaults\n"
-    _fail "/usr/sbin/ssh %HOST% /sbin/zfs receive -vFd" "$DEST_PIPE_WITH_HOST"
-    _fail "/sbin/zfs receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
+    _fail "fakeSSH %HOST% /sbin/zfs receive -vFd" "$DEST_PIPE_WITH_HOST"
+    _fail "fakeZFS receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
     ## generate config
     config="$(mktemp)"
     printf "ZFS=\"myZFS\"\n" >> "$config"
     ## set SSH via environment
     SSH="mySSH"
-    loadConfig "$config" && rm -f "$config"
+    loadConfig "$config" 2>&1 && rm -f "$config"
     ## values should match config and environment
     _fail "mySSH %HOST% myZFS receive -vFd" "$DEST_PIPE_WITH_HOST"
     _fail "myZFS receive -vFd" "$DEST_PIPE_WITHOUT_HOST"
   )
 
+  ## test loadConfig with options
+  (
+    FIND="${SCRIPT_PATH}/find.sh"
+    ZFS="fakeZFS"
+    SSH="fakeSSH"
+    LOG_BASE="$(mktemp -d)"
+    # shellcheck source=/dev/null
+    . ../zfs-replicate.sh
+    ## test --help and -h
+    printf "_testZFSReplicate/loadConfigWithHelp\n"
+    ! lines=$(loadConfig "--help" 2>&1) && true ## prevent tests from exiting
+    _fail "$lines" "Usage: test.sh"
+    ! lines=$(loadConfig "-h" 2>&1) && true ## prevent tests from exiting
+    _fail "$lines" "Usage: test.sh"
+    ## test --status and -s
+    printf "_testZFSReplicate/loadConfigWithStatus\n"
+    ## generate fake log files with staggered creation time
+    for idx in $(seq 1 3); do
+      printf "testing log %d\n" "$idx" > "${LOG_BASE}/autorep-test${idx}.log" && sleep 1
+    done
+    ## check status command
+    ! lines=$(loadConfig "--status" 2>&1) && true ## prevent tests from exiting
+    _fail "$lines" "testing log 3"
+    ! lines=$(loadConfig "-s" 2>&1) && true ## prevent tests from exiting
+    _fail "$lines" "testing log 3"
+    ## cleanup
+    rm -rvf "${LOG_BASE}"
+  )
+
   ## test snapCreate with different set combinations
   (
     ## configure test parameters
-    FIND="${SCRIPT_PATH}/find.sh"
+    FIND="fakeFIND"
     ZFS="${SCRIPT_PATH}/zfs.sh"
     SSH="${SCRIPT_PATH}/ssh.sh"
     HOST_CHECK="${ECHO} %HOST%"
@@ -101,7 +130,7 @@ _testZFSReplicate() {
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/snapCreateWithoutErrors\n"
     idx=0
-    snapCreate | while IFS= read -r line; do
+    snapCreate 2>&1 | while IFS= read -r line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -114,129 +143,159 @@ _testZFSReplicate() {
         3)
           match="cmd=${ZFS} list -H -o name dstPool0/dstFS0"
           ;;
-        6)
-          match="cmd=${ZFS} destroy srcPool0/srcFS0@autorep-test1"
+        5)
+          match="cmd=${ZFS} list -Hr -o name -s creation -t snapshot -d 1 srcPool0/srcFS0"
           ;;
-        7)
-          match="cmd=${ZFS} snapshot srcPool0/srcFS0@autorep-"
+        6)
+          match="cmd=${ZFS} list -Hr -o name -s creation -t snapshot dstPool0/dstFS0"
           ;;
         8)
-          match="creating lockfile ${TMPDIR}/.replicate.send.lock"
+          match="cmd=${ZFS} destroy srcPool0/srcFS0@autorep-test1"
           ;;
         9)
+          match="cmd=${ZFS} snapshot srcPool0/srcFS0@autorep-"
+          ;;
+        10)
+          match="creating lockfile ${TMPDIR}/.replicate.send.lock"
+          ;;
+        11)
           match="cmd=${ZFS} send -Rs -I srcPool0/srcFS0@autorep-test3 srcPool0/srcFS0@autorep-${TAG} |"
           match="$match ${DEST_PIPE_WITHOUT_HOST} dstPool0/dstFS0"
           ;;
-        10)
+        12)
           match="receive -vFd dstPool0/dstFS0"
           ;;
-        11)
+        13)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        12)
+        14)
           match="cmd=${ECHO} dstHost1"
           ;;
-        13)
+        15)
           match="cmd=${ZFS} list -H -o name srcPool1/srcFS1/subFS1"
           ;;
-        15)
+        17)
           match="cmd=${SSH} dstHost1 ${ZFS} list -H -o name dstPool1/dstFS1"
           ;;
-        18)
-          match="cmd=${ZFS} destroy srcPool1/srcFS1/subFS1@autorep-test1"
-          ;;
         19)
-          match="cmd=${ZFS} snapshot srcPool1/srcFS1/subFS1@autorep-${TAG}"
+          match="cmd=${ZFS} list -Hr -o name -s creation -t snapshot -d 1 srcPool1/srcFS1/subFS1"
           ;;
         20)
+          match="cmd=${SSH} dstHost1 ${ZFS} list -Hr -o name -s creation -t snapshot dstPool1/dstFS1"
+          ;;
+        22)
+          match="cmd=${ZFS} destroy srcPool1/srcFS1/subFS1@autorep-test1"
+          ;;
+        23)
+          match="cmd=${ZFS} snapshot srcPool1/srcFS1/subFS1@autorep-${TAG}"
+          ;;
+        24)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        21)
+        25)
           match="cmd=${ZFS} send -Rs -I srcPool1/srcFS1/subFS1@autorep-test3 srcPool1/srcFS1/subFS1@autorep-${TAG} |"
           match="$match ${SSH} dstHost1 ${ZFS} receive -vFd dstPool1/dstFS1"
           ;;
-        23)
+        27)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        24)
+        28)
           match="cmd=${ECHO} dstHost2"
           ;;
-        25)
+        29)
           match="cmd=${ZFS} list -H -o name srcPool2/srcFS2"
           ;;
-        27)
+        31)
           match="cmd=${SSH} dstHost2 ${ZFS} list -H -o name dstPool2/dstFS2"
           ;;
-        30)
+        33)
+          match="cmd=${ZFS} list -Hr -o name -s creation -t snapshot -d 1 srcPool2/srcFS2"
+          ;;
+        34)
+          match="cmd=${SSH} dstHost2 ${ZFS} list -Hr -o name -s creation -t snapshot dstPool2/dstFS2"
+          ;;
+        36)
           match="cmd=${ZFS} destroy srcPool2/srcFS2@autorep-test1"
           ;;
-        31)
+        37)
           match="cmd=${ZFS} snapshot srcPool2/srcFS2@autorep-${TAG}"
           ;;
-        32)
+        38)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        33)
+        39)
           match="cmd=${ZFS} send -Rs -I srcPool2/srcFS2@autorep-test3 srcPool2/srcFS2@autorep-${TAG} |"
           match="$match ${SSH} dstHost2 ${ZFS} receive -vFd dstPool2/dstFS2"
           ;;
-        35)
+        41)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        36)
+        42)
           match="cmd=${ECHO} srcHost3"
           ;;
-        37)
+        43)
           match=" cmd=${SSH} srcHost3 ${ZFS} list -H -o name srcPool3/srcFS3"
           ;;
-        39)
+        45)
           match="cmd=${ZFS} list -H -o name dstPool3/dstFS3"
           ;;
-        42)
+        47)
+          match="cmd=${SSH} srcHost3 ${ZFS} list -Hr -o name -s creation -t snapshot -d 1 srcPool3/srcFS3"
+          ;;
+        48)
+          match="cmd=${ZFS} list -Hr -o name -s creation -t snapshot dstPool3/dstFS3"
+          ;;
+        50)
           match="cmd=${SSH} srcHost3 ${ZFS} destroy srcPool3/srcFS3@autorep-test1"
           ;;
-        43)
+        51)
           match="cmd=${SSH} srcHost3 ${ZFS} snapshot srcPool3/srcFS3@autorep-${TAG}"
           ;;
-        44)
+        52)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        45)
+        53)
           match="cmd=${SSH} srcHost3 ${ZFS} send -Rs -I srcPool3/srcFS3@autorep-test3 srcPool3/srcFS3@autorep-${TAG} |"
           match="$match ${ZFS} receive -vFd dstPool3/dstFS3"
           ;;
-        47)
+        55)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        48)
+        56)
           match="cmd=${ECHO} srcHost4"
           ;;
-        49)
+        57)
           match="cmd=${ECHO} dstHost4"
           ;;
-        50)
+        58)
           match="cmd=${SSH} srcHost4 ${ZFS} list -H -o name srcPool4/srcFS4"
           ;;
-        52)
+        60)
           match="cmd=${SSH} dstHost4 ${ZFS} list -H -o name dstPool4/dstFS4"
           ;;
-        55)
+        62)
+          match="cmd=${SSH} srcHost4 ${ZFS} list -Hr -o name -s creation -t snapshot -d 1 srcPool4/srcFS4"
+          ;;
+        63)
+          match="cmd=${SSH} dstHost4 ${ZFS} list -Hr -o name -s creation -t snapshot dstPool4/dstFS4"
+          ;;
+        65)
           match="cmd=${SSH} srcHost4 ${ZFS} destroy srcPool4/srcFS4@autorep-test1"
           ;;
-        56)
+        66)
           match="cmd=${SSH} srcHost4 ${ZFS} snapshot srcPool4/srcFS4@autorep-${TAG}"
           ;;
-        57)
+        67)
           match="creating lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        58)
+        68)
           match="cmd=${SSH} srcHost4 ${ZFS} send -Rs -I srcPool4/srcFS4@autorep-test3 srcPool4/srcFS4@autorep-${TAG} |"
           match="$match ${SSH} dstHost4 ${ZFS} receive -vFd dstPool4/dstFS4"
           ;;
-        60)
+        70)
           match="deleting lockfile ${TMPDIR}/.replicate.send.lock"
           ;;
-        61)
+        71)
           match="deleting lockfile ${TMPDIR}/.replicate.snapshot.lock"
           ;;
       esac
@@ -248,7 +307,7 @@ _testZFSReplicate() {
   ## test snapCreate with host check errors
   (
     ## configure test parameters
-    FIND="${SCRIPT_PATH}/find.sh"
+    FIND="fakeFIND"
     ZFS="${SCRIPT_PATH}/zfs.sh"
     SSH="${SCRIPT_PATH}/ssh.sh"
     HOST_CHECK="false"
@@ -261,15 +320,12 @@ _testZFSReplicate() {
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/snapCreateWithHostCheckErrors\n"
     idx=0
-    snapCreate | while IFS= read -r line; do
+    snapCreate 2>&1 | while IFS= read -r line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
         0)
           match="creating lockfile ${TMPDIR}/.replicate.snapshot.lock"
-          ;;
-        13)
-          match="source or destination host check failed"
           ;;
         15)
           match="source or destination host check failed"
@@ -280,7 +336,10 @@ _testZFSReplicate() {
         19)
           match="source or destination host check failed"
           ;;
-        20)
+        21)
+          match="source or destination host check failed"
+          ;;
+        22)
           match="deleting lockfile ${TMPDIR}/.replicate.snapshot.lock"
           ;;
       esac
@@ -292,7 +351,7 @@ _testZFSReplicate() {
   ## test snapCreate with dataset check errors
   (
     ## configure test parameters
-    FIND="${SCRIPT_PATH}/find.sh"
+    FIND="fakeFIND"
     ZFS="${SCRIPT_PATH}/zfs.sh"
     SSH="${SCRIPT_PATH}/ssh.sh"
     HOST_CHECK="${ECHO} %HOST%"
@@ -303,7 +362,7 @@ _testZFSReplicate() {
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/snapCreateWithDatasetCheckErrors\n"
     idx=0
-    snapCreate | while IFS= read -r line; do
+    snapCreate 2>&1 | while IFS= read -r line; do
       match=""
       printf "%d %s\n" "$idx" "$line"
       case $idx in
@@ -362,9 +421,9 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/exitCleanSuccess\n"
-    line=$(exitClean 0 "test message")
+    lines=$(exitClean 0 "test message" 2>&1)
     match="success total sets 0 skipped 0: test message" ## counts are modified in snapCreate
-    _fail "$line" "$match"
+    _fail "$lines" "$match"
   )
 
   ## test exitClean code=99 with error message
@@ -377,9 +436,9 @@ _testZFSReplicate() {
     # shellcheck source=/dev/null
     . ../zfs-replicate.sh && loadConfig
     printf "_testZFSReplicate/exitCleanError\n"
-    ! line=$(exitClean 99 "error message") && true ## prevent tests from exiting
+    ! lines=$(exitClean 99 "error message" 2>&1) && true ## prevent tests from exiting
     match="operation exited unexpectedly: code=99 msg=error message"
-    _fail "$line" "$match"
+    _fail "$lines" "$match"
   )
 
   ## yay, tests completed!
