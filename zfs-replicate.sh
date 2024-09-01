@@ -77,7 +77,7 @@ pruneLogs() {
   fi
   if [ "$logCount" -gt "$LOG_KEEP" ]; then
     prune="$(printf "%s\n" "$logs" | sed -n "$((LOG_KEEP + 1)),\$p")"
-    printf "pruning %d logs\n" "$((logCount - LOG_KEEP + 1))"
+    printf "pruning %d logs\n" "$((logCount - LOG_KEEP + 1))" 1>&2
     printf "%s\n" "$prune" | xargs rm -vf
   fi
 }
@@ -86,7 +86,7 @@ pruneLogs() {
 clearLock() {
   lockFile=$1
   if [ -f "$lockFile" ]; then
-    printf "deleting lockfile %s\n" "$lockFile"
+    printf "deleting lockfile %s\n" "$lockFile" 1>&2
     rm "$lockFile"
   fi
 }
@@ -118,7 +118,7 @@ exitClean() {
   clearLock "${TMPDIR}/.replicate.snapshot.lock"
   clearLock "${TMPDIR}/.replicate.send.lock"
   ## print log message and exit
-  printf "%s\n" "$logMsg"
+  printf "%s\n" "$logMsg" 1>&2
   exit "$exitCode"
 }
 
@@ -130,16 +130,16 @@ checkLock() {
     ## see if this pid is still running
     if ps -p "$(cat "$lockFile")" > /dev/null 2>&1; then
       ## looks like it's still running
-      printf "ERROR: script is already running as: %d\n" "$(cat "$lockFile")"
+      printf "ERROR: script is already running as: %d\n" "$(cat "$lockFile")" 1>&2
     else
       ## stale lock file?
-      printf "ERROR: stale lockfile %s\n" "$lockFile"
+      printf "ERROR: stale lockfile %s\n" "$lockFile" 1>&2
     fi
     ## cleanup and exit
     exitClean 128 "confirm script is not running and delete lockfile $lockFile"
   fi
   ## well no lockfile..let's make a new one
-  printf "creating lockfile %s\n" "$lockFile"
+  printf "creating lockfile %s\n" "$lockFile" 1>&2
   printf "%d\n" "$$" > "$lockFile"
 }
 
@@ -154,7 +154,7 @@ checkHost() {
     return 0
   fi
   cmd=$(printf "%s\n" "$HOST_CHECK" | sed "s/%HOST%/$host/g")
-  printf "checking host cmd=%s\n" "$cmd"
+  printf "checking host cmd=%s\n" "$cmd" 2>&1
   ## run the check
   if ! $cmd > /dev/null 2>&1; then
     return 1
@@ -172,7 +172,7 @@ checkDataset() {
     cmd="$SSH $host "
   fi
   cmd="$cmd$ZFS list -H -o name $set"
-  printf "checking dataset cmd=%s\n" "$cmd"
+  printf "checking dataset cmd=%s\n" "$cmd" 1>&2
   ## execute command
   if ! $cmd; then
     return 1
@@ -194,7 +194,7 @@ snapDestroy() {
     cmd="$cmd -r"
   fi
   cmd="$cmd $snap"
-  printf "destroying snapshot cmd=%s\n" "$cmd"
+  printf "destroying snapshot cmd=%s\n" "$cmd" 1>&2
   ## ignore error from destroy and count on logging to alert the end-user
   ## destroying recursive snapshots can lead to "snapshot not found" errors
   $cmd || true
@@ -227,7 +227,7 @@ snapSend() {
     pipe=$(printf "%s\n" "$DEST_PIPE_WITH_HOST" | sed "s/%HOST%/$dstHost/g")
   fi
   pipe="$pipe $dst"
-  printf "sending snapshot cmd=%s | %s\n" "$cmd" "$pipe"
+  printf "sending snapshot cmd=%s | %s\n" "$cmd" "$pipe" 1>&2
   ## execute send and check return
   if ! $cmd | $pipe; then
     snapDestroy "${src}@${name}" "$srcHost"
@@ -252,6 +252,7 @@ snapList() {
     cmd="$cmd -d $depth"
   fi
   cmd="$cmd $set"
+  printf "listing snapshots cmd=%s\n" "$cmd" 1>&2
   ## get snapshots from host
   if ! snaps=$($cmd); then
     exitClean 128 "failed to list snapshots for dataset: $set"
@@ -276,7 +277,7 @@ snapCreate() {
     if [ "$ALLOW_ROOT_DATASETS" -ne 1 ]; then
       if [ "$dst" = "$(basename "$dst")" ] || [ "$dst" = "$(basename "$dst")/" ]; then
         temps="replicating root datasets can lead to data loss - set ALLOW_ROOT_DATASETS=1 to override"
-        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
         __SKIP_COUNT=$((__SKIP_COUNT + 1))
         continue
       fi
@@ -296,13 +297,13 @@ snapCreate() {
     fi
     ## check source and destination hosts
     if ! checkHost "$srcHost" || ! checkHost "$dstHost"; then
-      printf "WARNING: skipping replication set '%s' - source or destination host check failed\n" "$pair"
+      printf "WARNING: skipping replication set '%s' - source or destination host check failed\n" "$pair" 1>&2
       __SKIP_COUNT=$((__SKIP_COUNT + 1))
       continue
     fi
     ## check source and destination datasets
     if ! checkDataset "$src" "$srcHost" || ! checkDataset "$dst" "$dstHost"; then
-      printf "WARNING: skipping replication set '%s' - source or destination dataset check failed\n" "$pair"
+      printf "WARNING: skipping replication set '%s' - source or destination dataset check failed\n" "$pair" 1>&2
       __SKIP_COUNT=$((__SKIP_COUNT + 1))
       continue
     fi
@@ -313,7 +314,7 @@ snapCreate() {
       ## while we are here...check for our current snap name
       if [ "$snap" = "${src}@${name}" ]; then
         ## looks like it's here...we better kill it
-        printf "destroying duplicate snapshot: %s@%s\n" "$src" "$name"
+        printf "destroying duplicate snapshot: %s@%s\n" "$src" "$name" 1>&2
         snapDestroy "${src}@${name}" "$srcHost"
       fi
     done
@@ -346,7 +347,7 @@ snapCreate() {
       if [ -z "$base" ] && [ "$ALLOW_RECONCILIATION" -ne 1 ]; then
         temps=$(printf "source snapshot '%s' not in destination dataset: %s" "$ss" "$dst")
         temps=$(printf "%s - set 'ALLOW_RECONCILIATION=1' to fallback to a full send" "$temps")
-        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
         __SKIP_COUNT=$((__SKIP_COUNT + 1))
         continue
       fi
@@ -356,12 +357,12 @@ snapCreate() {
       ## allowed to prune remote dataset?
       if [ "$ALLOW_RECONCILIATION" -ne 1 ]; then
         temps="destination contains snapshots not in source - set 'ALLOW_RECONCILIATION=1' to prune snapshots"
-        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps"
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
         __SKIP_COUNT=$((__SKIP_COUNT + 1))
         continue
       fi
       ## prune destination snapshots
-      printf "pruning destination snapshots: %s\n" "$dstSnaps"
+      printf "pruning destination snapshots: %s\n" "$dstSnaps" 1>&2
       for snap in $dstSnaps; do
         snapDestroy "$snap" "$dstHost"
       done
@@ -370,7 +371,7 @@ snapCreate() {
     if [ "$srcSnapCount" -ge "$SNAP_KEEP" ]; then
       ## snaps are sorted above by creation in ascending order
       printf "%s\n" "$srcSnaps" | sed -n "1,$((srcSnapCount - SNAP_KEEP))p" | while read -r snap; do
-        printf "found old snapshot %s\n" "$snap"
+        printf "found old snapshot %s\n" "$snap" 1>&2
         snapDestroy "$snap" "$srcHost"
       done
     fi
@@ -386,7 +387,7 @@ snapCreate() {
     fi
     cmd="$cmd ${src}@${name}"
     ## come on already...take that snapshot
-    printf "creating snapshot cmd=%s\n" "$cmd"
+    printf "creating snapshot cmd=%s\n" "$cmd" 1>&2
     if ! $cmd; then
       snapDestroy "${src}@${name}" "$srcHost"
       exitClean 128 "failed to create snapshot: ${src}@${name}"
@@ -407,7 +408,7 @@ writeLog() {
     logf="${LOG_BASE}/${LOG_FILE}"
   fi
   ## always print to stdout and copy to logfile if set
-  printf "%s %s[%d]: %s\n" "$(date '+%b %d %T')" "$SCRIPT" "$$" "$line" | tee -a "$logf"
+  printf "%s %s[%d]: %s\n" "$(date '+%b %d %T')" "$SCRIPT" "$$" "$line" | tee -a "$logf" 1>&2
   ## if syslog has been enabled write to syslog via logger
   if [ "$SYSLOG" -eq 1 ] && [ -n "$LOGGER" ]; then
     $LOGGER -p "${SYSLOG_FACILITY}.info" -t "$SCRIPT" "$line"

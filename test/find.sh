@@ -7,8 +7,11 @@ set -eu
 (set -o pipefail 2> /dev/null) && set -o pipefail
 
 _fakeFIND() {
-  printf "find %s\n" "$*"
+  path="$1"
+  printf "%s/autorep-test1.log\n" "$path"
+  printf "%s/autorep-test2.log\n" "$path"
+  printf "%s/autorep-test3.log\n" "$path"
   return 0
 }
 
-_fakeZFS "$@"
+_fakeFIND "$@"
