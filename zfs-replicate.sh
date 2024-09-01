@@ -554,7 +554,6 @@ main() {
 }
 
 ## process config and start main if we weren't sourced
-if [ "$SCRIPT" != "sh" ] && [ "$SCRIPT" != "dash" ] && [ "$SCRIPT" != "-bash" ] &&
-  [ "$(expr "$SCRIPT" : 'zfs-replicate')" -gt 0 ]; then
+if  [ "$(expr "$SCRIPT" : 'zfs-replicate')" -gt 0 ]; then
   loadConfig "$@" && main 2>&1 | captureOutput
 fi
