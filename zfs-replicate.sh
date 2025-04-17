@@ -332,25 +332,30 @@ snapCreate() {
     ## set our base snap for incremental generation if src contains a sufficient
     ## number of snapshots and the base source snapshot exists in destination dataset
     base=""
-    snapCheckFail=0
     if [ "$srcSnapCount" -ge 1 ] && [ "$dstSnapCount" -ge 1 ]; then
       ## get most recent source snapshot
       ss=$(printf "%s\n" "$srcSnaps" | tail -n 1)
       ## get source snapshot name
       sn=$(printf "%s\n" "$ss" | cut -f2 -d@)
-      ## loop over destinations snaps and look for a match
-      for ds in $dstSnaps; do
-        ## set base snap name
-        dn=$(printf "%s\n" "$ds" | cut -f2 -d@)
-        if [ -z "$base" ] && [ "$dn" = "$sn" ]; then
-          base="$ss"
-        fi
-        ## validate matching snaps for each dataset
+      ## reset snapCheckFail
+      snapCheckFail=0
+      ## loop over src/dst snaps and look for a match
+      for ssnap in $srcSnapsAll; do
+        ## break if snapCheckFail reaches this point again
+        [ "$snapCheckFail" -eq 0 ] || break
         ## reset snapMatch variable
         snapMatch=0
-        for ssnap in $srcSnapsAll; do
+        for dsnap in $dstSnaps; do
+          ## set base snap name
+          if [ -z "$base" ]; then
+            dn=$(printf "%s\n" "$dsnap" | cut -f2 -d@)
+            if [ "$dn" = "$sn" ]; then
+              base="$ss"
+            fi
+          fi
+          ## validate matching snaps for each dataset
           ## trim first part of dst snap name
-          dsnap=$(printf "%s\n" "$ds" | cut -f2- -d/)
+          dsnap=$(printf "%s\n" "$dsnap" | cut -f2- -d/)
           ## loop through and try to find a match
           if [ "$dsnap" != "$ssnap" ]; then
             continue
