@@ -252,6 +252,7 @@ snapList() {
     cmd="$cmd -d $depth"
   fi
   cmd="$cmd $set"
+  ## only list snaps created by this script
   printf "listing snapshots cmd=%s\n" "$cmd" 1>&2
   ## get snapshots from host
   if ! snaps=$($cmd); then
@@ -309,48 +310,8 @@ snapCreate() {
     fi
     ## get source and destination snapshots
     srcSnaps=$(snapList "$src" "$srcHost" 1)
-    dstSnaps=$(snapList "$dst" "$dstHost" 0)
-    ## we need to list all src snapshots for next step
     srcSnapsAll=$(snapList "$src" "$srcHost" 0)
-    ## check that all datasets have matching snapshots
-    ## reset fail variable
-    snapCheckFail=0
-    ## loop and check that snapshots match recursively on src and dst
-    for ssnap in $srcSnapsAll; do
-      ## reset snapMatch variable
-      snapMatch=0
-      for dsnap in $dstSnaps; do
-        ## trim first part of dst snap name
-        dsnap=$(printf "%s\n" "$dsnap" | cut -f2- -d/)
-        ## loop through and try to find a match
-        if [ "$dsnap" != "$ssnap" ]; then
-          continue
-        ## if found, set snapMatch var
-        elif [ "$dsnap" = "$ssnap" ]; then
-          snapMatch=1
-          break
-        fi
-      done
-      ## if no matching snapshots found, destroy
-      ## if ALLOW_RECONCILIATION=1, otherwise skip set
-      if [ "$snapMatch" -eq 1  ]; then
-        continue
-      elif [ "$snapMatch" -eq 0  ] && [ "${ALLOW_RECONCILIATION}" -eq 1 ]; then
-        snapDestroy "$ssnap" "$srcHost"
-        continue
-      else
-        snapCheckFail=1
-        continue
-      fi
-    done
-    ## skip set if no matching snapshots are found for all datasets
-    if [ "$snapCheckFail" -eq 1 ]; then
-      temps=$(printf "source snapshot '%s' not in destination dataset: %s" "$ssnap" "$dst")
-      temps=$(printf "%s - set 'ALLOW_RECONCILIATION=1' to override" "$temps")
-      printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
-      __SKIP_COUNT=$((__SKIP_COUNT + 1))
-      continue
-    fi    
+    dstSnaps=$(snapList "$dst" "$dstHost" 0)
     for snap in $srcSnaps; do
       ## while we are here...check for our current snap name
       if [ "$snap" = "${src}@${name}" ]; then
@@ -371,6 +332,7 @@ snapCreate() {
     ## set our base snap for incremental generation if src contains a sufficient
     ## number of snapshots and the base source snapshot exists in destination dataset
     base=""
+    snapCheckFail=0
     if [ "$srcSnapCount" -ge 1 ] && [ "$dstSnapCount" -ge 1 ]; then
       ## get most recent source snapshot
       ss=$(printf "%s\n" "$srcSnaps" | tail -n 1)
@@ -378,10 +340,36 @@ snapCreate() {
       sn=$(printf "%s\n" "$ss" | cut -f2 -d@)
       ## loop over destinations snaps and look for a match
       for ds in $dstSnaps; do
+        ## set base snap name
         dn=$(printf "%s\n" "$ds" | cut -f2 -d@)
-        if [ "$dn" = "$sn" ]; then
+        if [ -z "$base" ] && [ "$dn" = "$sn" ]; then
           base="$ss"
-          break
+        fi
+        ## validate matching snaps for each dataset
+        ## reset snapMatch variable
+        snapMatch=0
+        for ssnap in $srcSnapsAll; do
+          ## trim first part of dst snap name
+          dsnap=$(printf "%s\n" "$ds" | cut -f2- -d/)
+          ## loop through and try to find a match
+          if [ "$dsnap" != "$ssnap" ]; then
+            continue
+          ## if found, set snapMatch var
+          elif [ "$dsnap" = "$ssnap" ]; then
+            snapMatch=1
+            break
+          fi
+        done
+        ## if no matching snapshots found, destroy
+        ## if ALLOW_RECONCILIATION=1, otherwise skip set
+        if [ "$snapMatch" -eq 1  ]; then
+          continue
+        elif [ "$snapMatch" -eq 0  ] && [ "${ALLOW_RECONCILIATION}" -eq 1 ]; then
+          snapDestroy "$ssnap" "$srcHost"
+          continue
+        else
+          snapCheckFail=1
+          continue
         fi
       done
       ## no matching base, are we allowed to fallback?
@@ -391,7 +379,13 @@ snapCreate() {
         printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
         __SKIP_COUNT=$((__SKIP_COUNT + 1))
         continue
-      fi
+      elif [ "$snapCheckFail" -eq 1 ]; then
+        temps=$(printf "source snapshot '%s' not in destination dataset: %s" "$ssnap" "$dst")
+        temps=$(printf "%s - set 'ALLOW_RECONCILIATION=1' to override" "$temps")
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
+        __SKIP_COUNT=$((__SKIP_COUNT + 1))
+        continue
+      fi 
     fi
     ## without a base snapshot, the destination must be clean
     if [ -z "$base" ] && [ "$dstSnapCount" -gt 0 ]; then
