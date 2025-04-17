@@ -252,7 +252,6 @@ snapList() {
     cmd="$cmd -d $depth"
   fi
   cmd="$cmd $set"
-  ## only list snaps created by this script
   printf "listing snapshots cmd=%s\n" "$cmd" 1>&2
   ## get snapshots from host
   if ! snaps=$($cmd); then
