@@ -310,12 +310,12 @@ snapCreate() {
     ## get source and destination snapshots
     srcSnaps=$(snapList "$src" "$srcHost" 1)
     dstSnaps=$(snapList "$dst" "$dstHost" 0)
-    ## we need to list all srcSnaps for next step
-    ## dstSnaps above will work, so  no need to relist them
+    ## we need to list all src snapshots for next step
     srcSnapsAll=$(snapList "$src" "$srcHost" 0)
     ## check that all datasets have matching snapshots
     ## reset fail variable
     snapCheckFail=0
+    ## loop and check that snapshots match recursively on src and dst
     for ssnap in $srcSnapsAll; do
       ## reset snapMatch variable
       snapMatch=0
