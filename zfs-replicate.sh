@@ -310,15 +310,16 @@ snapCreate() {
     ## get source and destination snapshots
     srcSnaps=$(snapList "$src" "$srcHost" 1)
     dstSnaps=$(snapList "$dst" "$dstHost" 0)
+    ## we need to list all srcSnaps for next step
+    ## dstSnaps above will work, so  no need to relist them
     srcSnapsAll=$(snapList "$src" "$srcHost" 0)
-    dstSnapsAll=$(snapList "$dst" "$dstHost" 0)
     ## check that all datasets have matching snapshots
     ## reset fail variable
-    snapCheckFail=""
+    snapCheckFail=0
     for ssnap in $srcSnapsAll; do
       ## reset snapMatch variable
-      snapMatch=""
-      for dsnap in $dstSnapsAll; do
+      snapMatch=0
+      for dsnap in $dstSnaps; do
         ## trim first part of dst snap name
         dsnap=$(printf "%s\n" "$dsnap" | cut -f2- -d/)
         ## loop through and try to find a match
@@ -326,15 +327,15 @@ snapCreate() {
           continue
         ## if found, set snapMatch var
         elif [ "$dsnap" = "$ssnap" ]; then
-          snapMatch="1"
+          snapMatch=1
           break
         fi
       done
       ## if no matching snapshots found, destroy
       ## if ALLOW_RECONCILIATION=1, otherwise skip set
-      if [ -n "$snapMatch" ]; then
+      if [ "$snapMatch" -eq 1  ]; then
         continue
-      elif [ "${ALLOW_RECONCILIATION}" -eq 1 ]; then
+      elif [ "$snapMatch" -eq 0  ] && [ "${ALLOW_RECONCILIATION}" -eq 1 ]; then
         snapDestroy "$ssnap" "$srcHost"
         continue
       else
@@ -343,7 +344,7 @@ snapCreate() {
       fi
     done
     ## skip set if no matching snapshots are found for all datasets
-    if [ -n "$snapCheckFail" ]; then
+    if [ "$snapCheckFail" -eq 1 ]; then
       temps=$(printf "source snapshot '%s' not in destination dataset: %s" "$ssnap" "$dst")
       temps=$(printf "%s - set 'ALLOW_RECONCILIATION=1' to override" "$temps")
       printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
