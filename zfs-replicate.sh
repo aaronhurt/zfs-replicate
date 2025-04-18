@@ -309,7 +309,7 @@ snapCreate() {
     fi
     ## get source and destination snapshots
     srcSnaps=$(snapList "$src" "$srcHost" 1)
-    srcSnapsAll=$(snapList "$src" "$srcHost" 0)
+    srcSnapsAll=$(snapList "$src" "$srcHost" 0 | sort -r)
     dstSnaps=$(snapList "$dst" "$dstHost" 0)
     for snap in $srcSnaps; do
       ## while we are here...check for our current snap name
