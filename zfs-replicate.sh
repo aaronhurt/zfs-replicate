@@ -309,6 +309,7 @@ snapCreate() {
     fi
     ## get source and destination snapshots
     srcSnaps=$(snapList "$src" "$srcHost" 1)
+    srcSnapsAll=$(snapList "$src" "$srcHost" 0 | sort -r)
     dstSnaps=$(snapList "$dst" "$dstHost" 0)
     for snap in $srcSnaps; do
       ## while we are here...check for our current snap name
@@ -335,12 +336,44 @@ snapCreate() {
       ss=$(printf "%s\n" "$srcSnaps" | tail -n 1)
       ## get source snapshot name
       sn=$(printf "%s\n" "$ss" | cut -f2 -d@)
-      ## loop over destinations snaps and look for a match
-      for ds in $dstSnaps; do
-        dn=$(printf "%s\n" "$ds" | cut -f2 -d@)
-        if [ "$dn" = "$sn" ]; then
-          base="$ss"
-          break
+      ## reset snapCheckFail
+      snapCheckFail=0
+      ## loop over src/dst snaps and look for a match
+      for ssnap in $srcSnapsAll; do
+        ## break if snapCheckFail reaches this point again
+        [ "$snapCheckFail" -eq 0 ] || break
+        ## reset snapMatch variable
+        snapMatch=0
+        for dsnap in $dstSnaps; do
+          ## set base snap name
+          if [ -z "$base" ]; then
+            dn=$(printf "%s\n" "$dsnap" | cut -f2 -d@)
+            if [ "$dn" = "$sn" ]; then
+              base="$ss"
+            fi
+          fi
+          ## validate matching snaps for each dataset
+          ## trim first part of dst snap name
+          dsnap=$(printf "%s\n" "$dsnap" | cut -f2- -d/)
+          ## loop through and try to find a match
+          if [ "$dsnap" != "$ssnap" ]; then
+            continue
+          ## if found, set snapMatch var
+          elif [ "$dsnap" = "$ssnap" ]; then
+            snapMatch=1
+            break
+          fi
+        done
+        ## if no matching snapshots found, destroy
+        ## if ALLOW_RECONCILIATION=1, otherwise skip set
+        if [ "$snapMatch" -eq 1  ]; then
+          continue
+        elif [ "$snapMatch" -eq 0  ] && [ "${ALLOW_RECONCILIATION}" -eq 1 ]; then
+          snapDestroy "$ssnap" "$srcHost"
+          continue
+        else
+          snapCheckFail=1
+          continue
         fi
       done
       ## no matching base, are we allowed to fallback?
@@ -350,7 +383,13 @@ snapCreate() {
         printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
         __SKIP_COUNT=$((__SKIP_COUNT + 1))
         continue
-      fi
+      elif [ "$snapCheckFail" -eq 1 ]; then
+        temps=$(printf "source snapshot '%s' not in destination dataset: %s" "$ssnap" "$dst")
+        temps=$(printf "%s - set 'ALLOW_RECONCILIATION=1' to override" "$temps")
+        printf "WARNING: skipping replication set '%s' - %s\n" "$pair" "$temps" 1>&2
+        __SKIP_COUNT=$((__SKIP_COUNT + 1))
+        continue
+      fi 
     fi
     ## without a base snapshot, the destination must be clean
     if [ -z "$base" ] && [ "$dstSnapCount" -gt 0 ]; then
