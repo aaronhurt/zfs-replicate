@@ -44,6 +44,7 @@ DEST_PIPE_WITH_HOST=
 DEST_PIPE_WITHOUT_HOST=
 ## temp path used for lock files
 TMPDIR="${TMPDIR:-"/tmp"}"
+DATASETS=$(mktemp)
 ## init values used in snapCreate and exitClean
 __PAIR_COUNT=0
 __PAIR_SKIP_COUNT=0
@@ -115,6 +116,7 @@ exitClean() {
   if [ "$exitCode" -eq 0 ] && [ -n "$extraMsg" ]; then
     logMsg=$(printf "%s: %s" "$logMsg" "$extraMsg")
   fi
+  rm "$DATASETS"
   ## cleanup old logs and clear locks
   pruneLogs
   clearLock "${TMPDIR}/.replicate.snapshot.lock"
@@ -170,62 +172,47 @@ getDatasets() {
   cmd=""
   ## build command
   if [ -n "$host" ]; then
-    cmd="$SSH $host "
+    $SSH $host "$ZFS list -Hr -o name \"$set\"" || return 1
+  else
+    $ZFS list -Hr -o name "$set" || return 1
   fi
-  cmd="$cmd$ZFS list -Hr -o name $set"
-  ## execute command
-  $cmd
 }
 
 createDataset() {
   set=$1
   host=$2
-  cmd=""
+  printf "creating destination dataset: %s\n" "$set" 1>&2
   ## build command
   if [ -n "$host" ]; then
-    cmd="$SSH $host "
+    $SSH $host "$ZFS create -p \"$set\"" || return 1
+  else
+    $ZFS create -p "$set" || return 1
   fi
-  cmd="$cmd$ZFS create -p $set"
-  printf "creating dataset cmd=%s\n" "$cmd" 1>&2
-  if ! $cmd; then
-    return 1
-  fi
-  return 0
 }
 
 ## ensure dataset exists
 checkDataset() {
   set=$1
   host=$2
-  cmd=""
+  printf "checking dataset: %s\n" "$set" 1>&2
   ## build command
   if [ -n "$host" ]; then
-    cmd="$SSH $host "
+    $SSH $host "$ZFS list -H -o name \"$set\"" || return 1
+  else
+    $ZFS list -H -o name "$set" || return 1
   fi
-  cmd="$cmd$ZFS list -H -o name $set"
-  printf "checking dataset cmd=%s\n" "$cmd" 1>&2
-  ## execute command
-  if ! $cmd; then
-    return 1
-  fi
-  return 0
 }
 
 ## small wrapper around zfs destroy
 snapDestroy() {
   snap=$1
   host=$2
-  cmd=""
-  ## build command
+  printf "destroying snapshot: %s\n" "$snap" 1>&2
   if [ -n "$host" ]; then
-    cmd="$SSH $host "
+    $SSH $host "$ZFS destroy \"$snap\"" || true
+  else
+    $ZFS destroy "$snap" || true
   fi
-  cmd="$cmd$ZFS destroy"
-  cmd="$cmd $snap"
-  printf "destroying snapshot cmd=%s\n" "$cmd" 1>&2
-  ## ignore error from destroy and count on logging to alert the end-user
-  ## destroying recursive snapshots can lead to "snapshot not found" errors
-  $cmd || true
 }
 
 ## main replication function
@@ -238,29 +225,37 @@ snapSend() {
   dstHost=$6
   ## check our send lockfile
   checkLock "${TMPDIR}/.replicate.send.lock"
-  ## begin building send command
-  cmd=""
-  if [ -n "$srcHost" ]; then
-    cmd="$SSH $srcHost "
-  fi
-  cmd="$cmd$ZFS send"
-  ## if first snap name is not empty generate an incremental
-  if [ -n "$base" ]; then
-    cmd="$cmd -I $base"
-  fi
-  cmd="$cmd ${src}@${snap}"
   ## set destination pipe based on destination host
   pipe="$DEST_PIPE_WITHOUT_HOST"
   if [ -n "$dstHost" ]; then
     pipe=$(printf "%s\n" "$DEST_PIPE_WITH_HOST" | sed "s/%HOST%/$dstHost/g")
   fi
-  pipe="$pipe $dst"
-  printf "sending snapshot cmd=%s | %s\n" "$cmd" "$pipe" 1>&2
-  ## execute send and check return
-  if ! $cmd | $pipe; then
-    snapDestroy "${src}@${name}" "$srcHost"
-    exitClean 128 "failed to send snapshot: ${src}@${name}"
+  if [ -n "$srcHost" ]; then
+    if [ -n "$base" ]; then
+      if ! $SSH $srcHost "$ZFS send -I \"$base\" \"$src@$snap\"" | $pipe "$dst"; then 
+        snapDestroy "${src}@${name}" "$srcHost"
+        exitClean 128 "failed to send snapshot: ${src}@${name}"
+      fi
+    else
+      if ! $SSH $srcHost "$ZFS send \"$src@$snap\"" | $pipe "$dst"; then
+        snapDestroy "${src}@${name}" "$srcHost"
+        exitClean 128 "failed to send snapshot: ${src}@${name}"
+      fi
+    fi
+  elif [ -n "$dstHost" ]; then
+    if [ -n "$base" ]; then
+      if ! $ZFS send -I "$base" "$src@$snap" | $SSH $dstHost "$pipe \"$dst\""; then
+        snapDestroy "${src}@${name}" "$srcHost"
+        exitClean 128 "failed to send snapshot: ${src}@${name}"
+      fi
+    else
+      if ! $ZFS send "$src@$snap" | $SSH $dstHost "$pipe \"$dst\""; then
+        snapDestroy "${src}@${name}" "$srcHost"
+        exitClean 128 "failed to send snapshot: ${src}@${name}"
+      fi
+    fi
   fi
+  printf "sending snapshot: %s\n" "$snap" 1>&2
   ## clear lockfile
   clearLock "${TMPDIR}/.replicate.send.lock"
 }
@@ -269,21 +264,12 @@ snapSend() {
 snapList() {
   set=$1
   host=$2
-  depth=$3
-  cmd=""
+  printf "listing snapshots for set: %s\n" "$set" 1>&2
   ## build send command
   if [ -n "$host" ]; then
-    cmd="$SSH $host "
-  fi
-  cmd="$cmd$ZFS list -H -o name -s creation -t snapshot"
-  if [ "$depth" -gt 0 ]; then
-    cmd="$cmd -d $depth"
-  fi
-  cmd="$cmd $set"
-  printf "listing snapshots cmd=%s\n" "$cmd" 1>&2
-  ## get snapshots from host
-  if ! snaps=$($cmd); then
-    exitClean 128 "failed to list snapshots for dataset: $set"
+    snaps=$($SSH $host "$ZFS list -H -o name -s creation -t snapshot \"$set\"") || exitClean 128 "failed to list snapshots for dataset: $set"
+  else
+    snaps=$($ZFS list -H -o name -s creation -t snapshot "$set") || exitClean 128 "failed to list snapshots for dataset: $set"
   fi
   ## filter snaps matching our pattern
   printf "%s\n" "$snaps" | grep "@autorep-" || true
@@ -337,15 +323,16 @@ snapCreate() {
     fi
     ## replicate all child datasets if RECURSE_CHILDREN=1
     if [ "$RECURSE_CHILDREN" -eq 1 ]; then
-      datasets=$(getDatasets "$src" "$srcHost")
+      getDatasets "$src" "$srcHost" > "$DATASETS"
     else
-      datasets="$src"
+      echo "$src" > "$DATASETS"
     fi
     ## set main destination dataset
     ## needed so we dont add $dst on top of itself
     _dst="$dst"
-    ## replicate each dataset separately    
-    for dataset in $datasets; do
+    ## replicate each dataset separately
+    exec 3< "$DATASETS"
+    while IFS= read -r dataset <&3; do
       __DATASET_COUNT=$((__DATASET_COUNT + 1))
       ## set scr and dst datasets
       src="$dataset"
@@ -354,8 +341,8 @@ snapCreate() {
       ## if not, create it
       checkDataset "$dst" "$dstHost" || createDataset "$dst" "$dstHost"
       ## get source and destination snapshots
-      srcSnaps=$(snapList "$src" "$srcHost" 0)
-      dstSnaps=$(snapList "$dst" "$dstHost" 0)
+      srcSnaps=$(snapList "$src" "$srcHost")
+      dstSnaps=$(snapList "$dst" "$dstHost")
       for snap in $srcSnaps; do
         ## while we are here...check for our current snap name
         if [ "$snap" = "${src}@${name}" ]; then
@@ -428,18 +415,17 @@ snapCreate() {
           snapDestroy "$snap" "$dstHost"
         done
       fi
-      ## build snapshot create command
-      cmd=""
+      printf "creating snapshot: %s\n" "${src}@${name}" 1>&2
       if [ -n "$srcHost" ]; then
-        cmd="$SSH $srcHost "
-      fi
-      cmd="$cmd$ZFS snapshot"
-      cmd="$cmd ${src}@${name}"
-      ## come on already...take that snapshot
-      printf "creating snapshot cmd=%s\n" "$cmd" 1>&2
-      if ! $cmd; then
-        snapDestroy "${src}@${name}" "$srcHost"
-        exitClean 128 "failed to create snapshot: ${src}@${name}"
+        if ! $SSH $srcHost "$ZFS snapshot \"${src}@${name}\""; then
+          snapDestroy "${src}@${name}" "$srcHost"
+          exitClean 128 "failed to create snapshot: ${src}@${name}"
+        fi
+      else
+        if ! $ZFS snapshot "${src}@${name}"; then
+          snapDestroy "${src}@${name}" "$srcHost"
+          exitClean 128 "failed to create snapshot: ${src}@${name}"
+        fi
       fi
       ## send snapshot to destination
       snapSend "$base" "$name" "$src" "$srcHost" "$dst" "$dstHost"
