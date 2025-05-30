@@ -64,7 +64,7 @@
 ##
 #ALLOW_RECONCILIATION=0
 
-## Option to recursively snapshot children of datasets contained
+## Option to recursively replicate children of datasets contained
 ## in the replication set.
 ##
 ## 0 - disable (default)
@@ -161,11 +161,11 @@
 ## may want to customize ssh ciphers or include mbuffer.
 ## The macro %HOST% string will be substituted with the value of the "@host"
 ## target in the replication set.
-## The default WITH a "@host" option is "ssh %HOST% zfs receive -vFd"
-## The default WITHOUT a "@host" option is "zfs receive -vFd".
+## The default WITH a "@host" option is "ssh %HOST% zfs receive -vF"
+## The default WITHOUT a "@host" option is "zfs receive -vF".
 ##
-#DEST_PIPE_WITH_HOST="$SSH %HOST% $ZFS receive -vFd"
-#DEST_PIPE_WITHOUT_HOST="$ZFS receive -vFd"
+#DEST_PIPE_WITH_HOST="$SSH %HOST% $ZFS receive -vF"
+#DEST_PIPE_WITHOUT_HOST="$ZFS receive -vF"
 
 ## Command to check the health of a source or destination host.
 ## A return code of 0 is considered OK/available.
