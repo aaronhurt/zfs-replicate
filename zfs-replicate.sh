@@ -230,6 +230,7 @@ snapSend() {
   if [ -n "$dstHost" ]; then
     pipe=$(printf "%s\n" "$DEST_PIPE_WITH_HOST" | sed "s/%HOST%/$dstHost/g")
   fi
+  printf "sending snapshot: %s\n" "$src@$snap" 1>&2
   if [ -n "$srcHost" ]; then
     if [ -n "$base" ]; then
       if ! $SSH $srcHost "$ZFS send -I \"$base\" \"$src@$snap\"" | $pipe "$dst"; then 
@@ -254,8 +255,19 @@ snapSend() {
         exitClean 128 "failed to send snapshot: ${src}@${name}"
       fi
     fi
+  elif [ -z "$srcHost" ] && [ -z "$dstHost" ]; then
+    if [ -n "$base" ]; then
+      if ! $ZFS send -I "$base" "$src@$snap" | $pipe "$dst"; then
+        snapDestroy "${src}@${name}" "$srcHost"
+        exitClean 128 "failed to send snapshot: ${src}@${name}"
+      fi
+    else
+      if ! $ZFS send "$src@$snap" | $pipe "$dst"; then
+        snapDestroy "${src}@${name}" "$srcHost"
+        exitClean 128 "failed to send snapshot: ${src}@${name}"
+      fi
+    fi
   fi
-  printf "sending snapshot: %s\n" "$snap" 1>&2
   ## clear lockfile
   clearLock "${TMPDIR}/.replicate.send.lock"
 }
