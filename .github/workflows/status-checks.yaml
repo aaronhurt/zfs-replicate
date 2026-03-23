@@ -10,72 +10,37 @@ permissions:
   pull-requests: read
 
 jobs:
-  misspell:
-    name: runner / misspell
+  linters:
+    name: run linters
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
-      - uses: reviewdog/action-misspell@9daa94af4357dddb6fd3775de806bc0a8e98d3e4 # ratchet:reviewdog/action-misspell@v1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+      - uses: reviewdog/action-misspell@d6429416b12b09b4e2768307d53bef58d172e962 # ratchet:reviewdog/action-misspell@v1.27.0
+        name: misspell
         with:
-          level: info
-          reporter: github-check
-          filter_mode: nofilter
           locale: "US"
-
-  typos:
-    name: runner / typos
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
-      - uses: reviewdog/action-typos@627388e238f182b925d9acd151432f9b68f1d666 # ratchet:reviewdog/action-typos@v1
+      - uses: reviewdog/action-typos@d5eb1bbcd1b3bfde596f6eeb470322727862fe98 # ratchet:reviewdog/action-typos@v1.19.0
+        name: typos
+      - uses: reviewdog/action-shfmt@d8f080930b9be5847b4f97e9f4122b81a82aaeac # ratchet:reviewdog/action-shfmt@v1.0.4
+        name: shfmt
         with:
-          level: info
-          reporter: github-check
-          filter_mode: nofilter
-
-  markdownlint:
-    name: runner / markdownlint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
-      - uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58 # ratchet:reviewdog/action-markdownlint@v0
-        with:
-          level: info
-          reporter: github-check
-          filter_mode: nofilter
-
-  shfmt:
-    name: runner / shfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
-      - uses: reviewdog/action-shfmt@d8f080930b9be5847b4f97e9f4122b81a82aaeac # ratchet:reviewdog/action-shfmt@v1
-        with:
-          level: info
-          filter_mode: nofilter
-          fail_on_error: true
           shfmt_flags: '-ci -sr -i 2'
-
-  shellcheck:
-    name: runner / shellcheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
-      - name: shellcheck
-        uses: reviewdog/action-shellcheck@5ebd09ddbe2ebb471646ce234c6c8dd18663ca7c # ratchet:reviewdog/action-shellcheck@v1
+      - uses: reviewdog/action-shellcheck@4c07458293ac342d477251099501a718ae5ef86e # ratchet:reviewdog/action-shellcheck@v1.32.0
+        name: shellcheck
         with:
-          level: info
-          reporter: github-check
-          filter_mode: nofilter
-          fail_on_error: true
+          fail_level: any
           exclude: |
             "./.git/*"
+      - uses: reviewdog/action-markdownlint@3667398db9118d7e78f7a63d10e26ce454ba5f58 # ratchet:reviewdog/action-markdownlint@v0.26.2
+        name: markdownlint
+        with:
+          fail_level: any
 
   tests:
-    name: unit tests
+    name: run tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # ratchet:actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
       - run: cd test && ./test.sh
         env:
           TMPDIR: ${{ runner.temp }}

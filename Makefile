@@ -1,7 +1,7 @@
 .PHONY: check pin unpin update upgrade switch switch-tags test-actions
 
 ## The paths to search for yaml files.
-PATHS := actions .github/workflows
+PATHS := .github/workflows
 ## The yaml files from above paths up to 2 levels deep.
 FILES := $(foreach path, $(PATHS), $(wildcard $(path)/*.yaml $(path)/*/*.yaml))
 
@@ -39,7 +39,7 @@ ifeq ($(shell uname -m),arm64)
 endif
 endif
 
-## test: Run github action "tests" job locally.
+## test: Run github action tests locally.
 test: set-container-arch
 	act --container-architecture="$(container_arch)" \
 	--job tests --rm
